@@ -109,8 +109,8 @@ main {
   background: linear-gradient(180deg, #d9b177 0%, #c49760 100%);
   border: 1.5px solid rgb(40 24 12 / 55%);
   border-radius: 4px 7px 5px 8px;
-  box-shadow: 0 3px 5px rgb(0 0 0 / 30%);
-  transform: rotate(-3deg);
+  box-shadow: 0 2px 4px rgb(0 0 0 / 22%);
+  transform: rotate(-2deg);
   pointer-events: none;
 }
 
@@ -123,6 +123,21 @@ main {
   height: 0.9rem;
   background: #5a3620;
   transform: translateX(-50%);
+}
+
+/* A small mound of turned soil at the post's foot, the same technique as
+   .plant-dot::before below --- so the sign reads as staked into the bed
+   like the plants are, not floating on top of it. */
+.garden-sign::after {
+  content: "";
+  position: absolute;
+  top: calc(100% + 0.7rem);
+  left: 50%;
+  width: 1rem;
+  aspect-ratio: 5 / 2;
+  transform: translate(-50%, -55%);
+  background: radial-gradient(closest-side, rgb(30 18 8 / 55%), transparent 80%);
+  border-radius: 50%;
 }
 
 /* Scattered grass tufts and pebbles along the bed's edge --- static, not
@@ -152,6 +167,13 @@ main {
 
 .decor-lg {
   width: 1.8rem;
+}
+
+/* A couple of edge details away from the bottom row --- top-right corner,
+   balancing .garden-sign's top-left placement, so the frame doesn't read as
+   bottom-heavy. */
+.decor-top-right {
+  inset: 1rem 1rem auto auto;
 }
 
 .visually-hidden {
@@ -350,6 +372,31 @@ main {
 .tool-button:focus-visible {
   outline: 2px solid #0b5fff;
   outline-offset: 2px;
+}
+
+/* The reset control is a different *kind* of action from the five
+   gardening tools beside it --- set apart with its own gap/divider and a
+   warm tint at rest, so it reads as distinct at a glance, not just another
+   tool in the row. Positioned relative so its own divider (below) can sit
+   in the gap without disturbing the button's own circular shape. */
+.tool-button[data-tool="clear"] {
+  position: relative;
+  margin-left: 0.55rem;
+  background-color: rgb(196 90 60 / 22%);
+}
+
+.tool-button[data-tool="clear"]:hover {
+  background-color: rgb(196 90 60 / 35%);
+}
+
+.tool-button[data-tool="clear"]::before {
+  content: "";
+  position: absolute;
+  top: 15%;
+  bottom: 15%;
+  left: -0.32rem;
+  width: 1.5px;
+  background: rgb(232 213 180 / 30%);
 }
 
 /* A shovelled plant fades and shrinks in place, then is removed from the DOM

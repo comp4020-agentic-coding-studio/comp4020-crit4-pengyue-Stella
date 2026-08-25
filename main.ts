@@ -179,7 +179,7 @@ const SPECIES_PROFILES: Record<Species, SpeciesProfile> = {
     growth: [
       { stage: "seed", at: 0, size: 1.5, color: [77, 51, 25], glow: 0.05 },
       { stage: "sprout", at: 500, size: 3.3, color: [134, 163, 60], glow: 0.3 },
-      { stage: "mature", at: 2000, size: 5.2, color: [74, 222, 128], glow: 0.6 },
+      { stage: "mature", at: 2000, size: 5.6, color: [74, 222, 128], glow: 0.6 },
     ],
     drone: { lfoRateMin: 0.1, lfoRateRange: 0.15, lfoDepthMultiplier: 0.15, gain: 0.05 },
   },
@@ -191,7 +191,7 @@ const SPECIES_PROFILES: Record<Species, SpeciesProfile> = {
     growth: [
       { stage: "seed", at: 0, size: 1.9, color: [61, 41, 20], glow: 0.05 },
       { stage: "sprout", at: 900, size: 4.3, color: [93, 107, 58], glow: 0.35 },
-      { stage: "mature", at: 3200, size: 6.8, color: [32, 84, 52], glow: 0.5 },
+      { stage: "mature", at: 3200, size: 7.4, color: [32, 84, 52], glow: 0.5 },
     ],
     drone: { lfoRateMin: 0.04, lfoRateRange: 0.06, lfoDepthMultiplier: 0.1, gain: 0.06 },
   },
@@ -556,14 +556,17 @@ function flowerMarkup(rand: () => number): string {
   // vector flower.
   const petalColors = ["#ec4899", "#f472b6", "#e0559c"];
   const petals = [-18, 54, 126, 198, 270]
-    .map((a) => a + jitter(10, rand))
+    .map((a) => a + jitter(14, rand))
     .map((a, i) => {
-      const tip = fromBase(a, 13 + rand() * 2, center[0], center[1]);
+      const tip = fromBase(a, 12 + rand() * 5, center[0], center[1]);
       return `<path data-phase="d" d="${leafPath(center[0], center[1], tip[0], tip[1], 6.5, rand)}" fill="${petalColors[i % petalColors.length]}"/>`;
     })
     .join("");
-  // A few tiny stamens around the center instead of one flat dot.
-  const stamens = [-40, 40, 180]
+  // A few tiny stamens around the center instead of one flat dot --- a
+  // random fourth stamen on top of the usual three so no two blooms are
+  // quite the same, on top of the angle/length jitter already above.
+  const stamenAngles = rand() > 0.5 ? [-40, 40, 140, 220] : [-40, 40, 180];
+  const stamens = stamenAngles
     .map((a) => a + jitter(20, rand))
     .map((a) => {
       const [sx, sy] = fromBase(a, 2.5 + rand(), center[0], center[1]);
@@ -620,6 +623,8 @@ function grassMarkup(rand: () => number): string {
     [baseX, baseY - 54],
     [baseX - 8, baseY - 20],
     [baseX + 9, baseY - 20],
+    [baseX - 5, baseY - 44],
+    [baseX + 6, baseY - 52],
   ];
   // Three greens instead of two, plus a few berry accents scattered across
   // the blobs, so a mature bush reads as flowering/fruiting rather than a
@@ -628,7 +633,7 @@ function grassMarkup(rand: () => number): string {
   const bushBlobs = bushCenters
     .map(
       ([cx, cy], i) =>
-        `<path data-phase="d" d="${blobPath(cx, cy, 12 - i * 0.3, 7, rand)}" fill="${bushPalette[i % bushPalette.length]}"/>`,
+        `<path data-phase="d" d="${blobPath(cx, cy, 13 - i * 0.3, 7, rand)}" fill="${bushPalette[i % bushPalette.length]}"/>`,
     )
     .join("");
   const berries = bushCenters
@@ -679,10 +684,14 @@ function treeMarkup(rand: () => number): string {
   // Three greens (one a lighter highlight) instead of two, plus a scatter of
   // small blossoms across the canopy for a friendlier, storybook tree.
   const canopyPalette = ["#2f6d3f", "#20542f", "#3f8752"];
+  // The lowest two centers (indices 1 and 2, flanking the trunk tip) get a
+  // touch more radius than the falloff formula gives them, so the crown's
+  // visual weight sits low and wide over the trunk instead of tapering to a
+  // point --- reads as a grounded canopy rather than a floating pom-pom.
   const canopy = canopyCenters
     .map(
       ([cx, cy], i) =>
-        `<path data-phase="d" d="${blobPath(cx, cy, 16 - i * 0.8, 8, rand)}" fill="${canopyPalette[i % canopyPalette.length]}"/>`,
+        `<path data-phase="d" d="${blobPath(cx, cy, (i === 1 || i === 2 ? 17.5 : 16) - i * 0.8, 8, rand)}" fill="${canopyPalette[i % canopyPalette.length]}"/>`,
     )
     .join("");
   const blossoms = canopyCenters
@@ -707,7 +716,7 @@ function treeMarkup(rand: () => number): string {
   return `
     ${seedMarkup(5.5, 3.4, "#5a3a1e")}
     <path data-phase="a" data-grow-line="1" pathLength="1" d="${stemPath(baseX, baseY, trunkTip[0], trunkTip[1], stemBow)}" stroke="#4a2f18" stroke-width="2.2"/>
-    <path data-phase="b" d="${trunkPath(baseX, baseY, trunkTip[0], trunkTip[1], 4.6, 1.6, rand)}" fill="#4a2f18"/>
+    <path data-phase="b" d="${trunkPath(baseX, baseY, trunkTip[0], trunkTip[1], 5.6, 2, rand)}" fill="#4a2f18"/>
     ${barkMarks}
     ${branches}
     ${canopy}
