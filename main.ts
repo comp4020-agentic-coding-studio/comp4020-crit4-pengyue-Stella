@@ -307,6 +307,7 @@ interface Plant {
   stage: Stage;
   matured: boolean;
   drone?: Drone;
+  lastWateredAt: number;
 }
 
 const plants: Plant[] = [];
@@ -322,7 +323,193 @@ function plantSeed(garden: HTMLElement, x: number, y: number): void {
   applyGrowthFrame(dot, growthFrameAt(0));
   garden.appendChild(dot);
 
-  plants.push({ x, y, pitch, dot, plantedAt: performance.now(), stage: "seed", matured: false });
+  plants.push({
+    x,
+    y,
+    pitch,
+    dot,
+    plantedAt: performance.now(),
+    stage: "seed",
+    matured: false,
+    lastWateredAt: -Infinity,
+  });
+}
+
+// --- Watering: dragging through the garden -------------------------------
+//
+// A drag is its own continuous, lightweight sound --- filtered noise, not a
+// full Voice --- whose brightness and volume track the pointer's speed. Each
+// plant the drag path crosses gets briefly brightened (a mature plant's
+// drone swells, then settles back) or reactivated (a plant whose drone was
+// evicted, or hasn't grown one yet, gets a short bright chime instead), with
+// a per-plant cooldown so lingering over one plant doesn't spam it.
+
+const WATER_HIT_RADIUS_PX = 22;
+const WATER_COOLDOWN_MS = 350;
+
+const WATER_TIMBRE: Timbre = {
+  ...DEFAULT_TIMBRE,
+  filterFrequency: DEFAULT_TIMBRE.filterFrequency * 1.4,
+  gain: DEFAULT_TIMBRE.gain * 0.5,
+  attack: 0.005,
+  release: 0.18,
+};
+
+const WATER_BRIGHTEN_GAIN = SUSTAIN_GAIN * 2.5;
+const WATER_BRIGHTEN_HZ = DEFAULT_TIMBRE.filterFrequency * 0.9;
+const WATER_BRIGHTEN_SWELL_S = 0.15;
+const WATER_BRIGHTEN_SETTLE_S = 0.9;
+
+/** Briefly swells a mature plant's already-playing drone, then lets it
+ * settle back to its normal sustain level --- the LFO keeps wobbling the
+ * filter on top of this the whole time, so it never sounds stuck. */
+function brightenDrone(drone: Drone): void {
+  const context = getAudioContext();
+  const now = context.currentTime;
+
+  const gain = drone.gain.gain;
+  gain.cancelScheduledValues(now);
+  gain.setValueAtTime(gain.value, now);
+  gain.linearRampToValueAtTime(WATER_BRIGHTEN_GAIN, now + WATER_BRIGHTEN_SWELL_S);
+  gain.linearRampToValueAtTime(SUSTAIN_GAIN, now + WATER_BRIGHTEN_SWELL_S + WATER_BRIGHTEN_SETTLE_S);
+
+  const freq = drone.filter.frequency;
+  freq.cancelScheduledValues(now);
+  freq.setValueAtTime(freq.value, now);
+  freq.linearRampToValueAtTime(WATER_BRIGHTEN_HZ, now + WATER_BRIGHTEN_SWELL_S);
+  freq.linearRampToValueAtTime(
+    DEFAULT_TIMBRE.filterFrequency * 0.5,
+    now + WATER_BRIGHTEN_SWELL_S + WATER_BRIGHTEN_SETTLE_S,
+  );
+}
+
+function waterPlant(plant: Plant, now: number): void {
+  plant.lastWateredAt = now;
+  playVoice(plant.pitch, WATER_TIMBRE);
+
+  if (plant.drone) {
+    brightenDrone(plant.drone);
+  } else if (plant.matured) {
+    // Its drone was evicted under the voice cap --- watering revives it,
+    // still subject to that same cap.
+    startDrone(plant);
+  }
+}
+
+/** Shortest distance from a point to a line segment, so a fast drag that
+ * jumps several pixels between pointermove samples still "crosses" a plant
+ * that sat between two samples, not just under one of them. */
+function distanceToSegment(
+  px: number,
+  py: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq === 0) return Math.hypot(px - x1, py - y1);
+
+  const t = Math.min(1, Math.max(0, ((px - x1) * dx + (py - y1) * dy) / lengthSq));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
+function waterPlantsAlong(x1: number, y1: number, x2: number, y2: number, now: number): void {
+  for (const plant of plants) {
+    if (now - plant.lastWateredAt < WATER_COOLDOWN_MS) continue;
+    if (distanceToSegment(plant.x, plant.y, x1, y1, x2, y2) > WATER_HIT_RADIUS_PX) continue;
+    waterPlant(plant, now);
+  }
+}
+
+let noiseBuffer: AudioBuffer | null = null;
+
+/** A shared, lazily-built noise buffer --- generated once, looped by every
+ * watering drag rather than regenerated per gesture. */
+function getNoiseBuffer(context: AudioContext): AudioBuffer {
+  if (!noiseBuffer) {
+    const duration = 2;
+    const buffer = context.createBuffer(1, context.sampleRate * duration, context.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    noiseBuffer = buffer;
+  }
+  return noiseBuffer;
+}
+
+interface WaterSound {
+  source: AudioBufferSourceNode;
+  filter: BiquadFilterNode;
+  gain: GainNode;
+}
+
+const WATER_BASE_HZ = 300;
+const WATER_MAX_HZ = 5000;
+const WATER_HZ_PER_SPEED = 6000; // speed in px/ms
+const WATER_BASE_GAIN = 0.03;
+const WATER_MAX_GAIN = 0.18;
+const WATER_GAIN_PER_SPEED = 0.4;
+const WATER_PARAM_SMOOTHING_S = 0.05;
+
+/** Starts the drag's own continuous sound: filtered noise, silent until the
+ * first speed sample arrives. Not a Voice --- it lives for the whole drag,
+ * not a single short envelope. */
+function startWaterSound(): WaterSound {
+  const context = getAudioContext();
+
+  const source = context.createBufferSource();
+  source.buffer = getNoiseBuffer(context);
+  source.loop = true;
+
+  const filter = context.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.frequency.value = WATER_BASE_HZ;
+  filter.Q.value = 0.7;
+
+  const gain = context.createGain();
+  gain.gain.value = 0;
+
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(getMasterGain(context));
+  source.start();
+
+  return { source, filter, gain };
+}
+
+/** Speed (px/ms) shapes both how loud and how bright the drag sounds ---
+ * a slow trickle stays quiet and dull, a fast swipe splashes louder and
+ * brighter. setTargetAtTime glides toward each new target instead of
+ * snapping, so frequent pointermove samples don't zipper the sound. */
+function updateWaterSound(water: WaterSound, speed: number): void {
+  const context = getAudioContext();
+  const now = context.currentTime;
+
+  const targetGain = Math.min(WATER_MAX_GAIN, WATER_BASE_GAIN + speed * WATER_GAIN_PER_SPEED);
+  const targetHz = Math.min(WATER_MAX_HZ, WATER_BASE_HZ + speed * WATER_HZ_PER_SPEED);
+
+  water.gain.gain.setTargetAtTime(targetGain, now, WATER_PARAM_SMOOTHING_S);
+  water.filter.frequency.setTargetAtTime(targetHz, now, WATER_PARAM_SMOOTHING_S);
+}
+
+function stopWaterSound(water: WaterSound): void {
+  const context = getAudioContext();
+  const now = context.currentTime;
+  const release = 0.15;
+
+  water.gain.gain.cancelScheduledValues(now);
+  water.gain.gain.setValueAtTime(water.gain.gain.value, now);
+  water.gain.gain.linearRampToValueAtTime(0, now + release);
+  water.source.stop(now + release);
+  water.source.addEventListener("ended", () => {
+    water.source.disconnect();
+    water.filter.disconnect();
+    water.gain.disconnect();
+  });
 }
 
 /** The one central update loop: walks every still-growing plant each frame,
@@ -356,12 +543,93 @@ function updatePlants(): void {
   requestAnimationFrame(updatePlants);
 }
 
+// --- Gesture: pointerdown is a "maybe plant" until it proves otherwise ----
+//
+// A tap plants a seed; a drag waters. Which one it is can't be known until
+// the pointer either lifts (tap) or travels far enough (drag), so nothing
+// commits at pointerdown --- this is the one place that decides, rather than
+// each gesture handler guessing independently.
+
+const DRAG_THRESHOLD_PX = 8;
+
+interface DragState {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  lastX: number;
+  lastY: number;
+  lastMoveAt: number;
+  smoothedSpeed: number;
+  watering: boolean;
+  water?: WaterSound;
+}
+
+let drag: DragState | null = null;
+
 const garden = document.querySelector<HTMLElement>("#garden");
 if (garden) {
   garden.addEventListener("pointerdown", (event) => {
+    if (drag) return; // one gesture at a time
+
     const rect = garden.getBoundingClientRect();
-    plantSeed(garden, event.clientX - rect.left, event.clientY - rect.top);
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    drag = {
+      pointerId: event.pointerId,
+      startX: x,
+      startY: y,
+      lastX: x,
+      lastY: y,
+      lastMoveAt: performance.now(),
+      smoothedSpeed: 0,
+      watering: false,
+    };
+    garden.setPointerCapture(event.pointerId);
   });
+
+  garden.addEventListener("pointermove", (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+
+    const rect = garden.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const now = performance.now();
+
+    if (!drag.watering) {
+      const traveled = Math.hypot(x - drag.startX, y - drag.startY);
+      if (traveled < DRAG_THRESHOLD_PX) return; // still just a maybe-plant
+      drag.watering = true;
+      drag.water = startWaterSound();
+    }
+
+    const dt = Math.max(1, now - drag.lastMoveAt);
+    const dist = Math.hypot(x - drag.lastX, y - drag.lastY);
+    drag.smoothedSpeed = lerp(drag.smoothedSpeed, dist / dt, 0.5);
+
+    if (drag.water) updateWaterSound(drag.water, drag.smoothedSpeed);
+    waterPlantsAlong(drag.lastX, drag.lastY, x, y, now);
+
+    drag.lastX = x;
+    drag.lastY = y;
+    drag.lastMoveAt = now;
+  });
+
+  const endGesture = (event: PointerEvent): void => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+
+    if (drag.watering) {
+      if (drag.water) stopWaterSound(drag.water);
+    } else {
+      // Never crossed the drag threshold --- a tap. Plant a seed.
+      plantSeed(garden, drag.startX, drag.startY);
+    }
+
+    drag = null;
+  };
+
+  garden.addEventListener("pointerup", endGesture);
+  garden.addEventListener("pointercancel", endGesture);
 }
 
 requestAnimationFrame(updatePlants);
