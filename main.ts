@@ -2,9 +2,11 @@
 // seed, a permanent seed -> sprout -> mature growth, a quiet evolving
 // sustained layer once mature (bounded by a voice cap) instead of going
 // silent, dragging through the garden to water, and three plant species ---
-// flower, grass, tree --- assigned by tap order (1-2-3-1-2-3...) rather than
-// any menu, differing only in the parameters fed into this one shared
-// Voice/growth/drone machinery.
+// flower, grass, tree --- differing only in the parameters fed into this one
+// shared Voice/growth/drone machinery. A small tool tray (index.html) picks
+// which of those species gets planted, or switches to the watering can
+// (unchanged drag-to-water) or the shovel (tap a plant to remove it, with its
+// own one-shot removal sound) --- see the Tool section below.
 
 let audioContext: AudioContext | null = null;
 
@@ -123,19 +125,10 @@ interface GrowthStop {
 //
 // A species is nothing but a bundle of parameters --- its own timbre, octave,
 // growth curve, and drone character --- fed into the same functions every
-// other species uses. Assigned by tap order (1-2-3-1-2-3...), never randomly
-// and never through any menu: variety with zero new interface surface.
+// other species uses. Which one gets planted is chosen from the tool tray
+// (see the Tool section below), never randomly.
 
 type Species = "flower" | "grass" | "tree";
-
-const SPECIES_ORDER: Species[] = ["flower", "grass", "tree"];
-let nextSpeciesIndex = 0;
-
-function nextSpecies(): Species {
-  const species = SPECIES_ORDER[nextSpeciesIndex % SPECIES_ORDER.length];
-  nextSpeciesIndex++;
-  return species;
-}
 
 interface DroneProfile {
   lfoRateMin: number;
@@ -683,8 +676,7 @@ interface Plant {
 
 const plants: Plant[] = [];
 
-function plantSeed(garden: HTMLElement, x: number, y: number): void {
-  const species = nextSpecies();
+function plantSeed(garden: HTMLElement, x: number, y: number, species: Species): void {
   const profile = SPECIES_PROFILES[species];
   const pitch = xToPitch(x / garden.clientWidth) * profile.registerMultiplier;
   playVoice(pitch, timbreForStage("seed", profile.timbre));
@@ -893,6 +885,97 @@ function stopWaterSound(water: WaterSound): void {
   });
 }
 
+// --- Shovel: tap a plant to remove it -------------------------------------
+//
+// A tap near a plant (not on empty soil --- tapping nothing does nothing, the
+// same no-fail-state manners as watering) stops its drone through the
+// existing fade-out and plays a short, unpitched noise burst: tool feedback,
+// not another species voice, so this doesn't need its own synthesis path.
+
+const SHOVEL_HIT_RADIUS_PX = 24;
+const REMOVAL_FILTER_HZ = 260;
+const REMOVAL_GAIN = 0.22;
+const REMOVAL_ATTACK_S = 0.006;
+const REMOVAL_DECAY_S = 0.16;
+
+/** A one-shot scrape/thud: the same shared noise buffer the watering drag
+ * uses, run through a low bandpass with a short percussive envelope instead
+ * of a continuous one --- deliberately dull and unpitched. */
+function playRemovalSound(): void {
+  const context = getAudioContext();
+  const now = context.currentTime;
+
+  const source = context.createBufferSource();
+  source.buffer = getNoiseBuffer(context);
+
+  const filter = context.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.frequency.value = REMOVAL_FILTER_HZ;
+  filter.Q.value = 0.9;
+
+  const envelope = context.createGain();
+  envelope.gain.setValueAtTime(0, now);
+  envelope.gain.linearRampToValueAtTime(REMOVAL_GAIN, now + REMOVAL_ATTACK_S);
+  envelope.gain.linearRampToValueAtTime(0, now + REMOVAL_ATTACK_S + REMOVAL_DECAY_S);
+
+  source.connect(filter);
+  filter.connect(envelope);
+  envelope.connect(getMasterGain(context));
+
+  source.start(now);
+  source.stop(now + REMOVAL_ATTACK_S + REMOVAL_DECAY_S);
+  source.addEventListener("ended", () => {
+    source.disconnect();
+    filter.disconnect();
+    envelope.disconnect();
+  });
+}
+
+/** Removes the nearest plant within SHOVEL_HIT_RADIUS_PX of (x, y), if any. */
+function removePlantNear(x: number, y: number): void {
+  let nearest: Plant | null = null;
+  let nearestDist = SHOVEL_HIT_RADIUS_PX;
+  for (const plant of plants) {
+    const dist = Math.hypot(plant.x - x, plant.y - y);
+    if (dist <= nearestDist) {
+      nearest = plant;
+      nearestDist = dist;
+    }
+  }
+  if (!nearest) return;
+  const plant = nearest;
+
+  stopDrone(plant);
+  playRemovalSound();
+
+  plants.splice(plants.indexOf(plant), 1);
+  const queueIndex = sustainedQueue.indexOf(plant);
+  if (queueIndex !== -1) sustainedQueue.splice(queueIndex, 1);
+
+  plant.dot.classList.add("removing");
+  plant.dot.addEventListener("animationend", () => plant.dot.remove());
+}
+
+// --- Tool tray: which gesture does what -----------------------------------
+//
+// One active tool at a time, picked from the tray in index.html. A species
+// tool plants that species on tap; the watering can keeps the existing
+// drag-to-water behavior untouched; the shovel removes on tap. Defaults to
+// "flower" so the instrument is playable before anyone touches the tray.
+
+type Tool = Species | "water" | "shovel";
+
+let activeTool: Tool = "flower";
+
+for (const button of document.querySelectorAll<HTMLButtonElement>(".tool-button")) {
+  button.addEventListener("click", () => {
+    activeTool = button.dataset.tool as Tool;
+    for (const other of document.querySelectorAll<HTMLButtonElement>(".tool-button")) {
+      other.setAttribute("aria-pressed", String(other === button));
+    }
+  });
+}
+
 /** The one central update loop: walks every still-growing plant each frame,
  * blends its visual smoothly toward maturity along its own species' growth
  * curve, and fires a short musical event exactly once at each growth stage
@@ -926,12 +1009,14 @@ function updatePlants(): void {
   requestAnimationFrame(updatePlants);
 }
 
-// --- Gesture: pointerdown is a "maybe plant" until it proves otherwise ----
+// --- Gesture: pointerdown is a "maybe water" until it proves otherwise ----
 //
-// A tap plants a seed; a drag waters. Which one it is can't be known until
-// the pointer either lifts (tap) or travels far enough (drag), so nothing
-// commits at pointerdown --- this is the one place that decides, rather than
-// each gesture handler guessing independently.
+// A tap acts once, on release, by whichever tool is active (plant a species,
+// or remove with the shovel); a drag only ever waters, and only when the
+// watering can is the active tool. Whether a gesture crosses into a drag
+// can't be known until the pointer either lifts (tap) or travels far enough
+// (drag), so nothing commits at pointerdown --- this is the one place that
+// decides, rather than each gesture handler guessing independently.
 
 const DRAG_THRESHOLD_PX = 8;
 
@@ -984,8 +1069,9 @@ if (garden) {
     const now = performance.now();
 
     if (!drag.watering) {
+      if (activeTool !== "water") return; // other tools act only on release
       const traveled = Math.hypot(x - drag.startX, y - drag.startY);
-      if (traveled < DRAG_THRESHOLD_PX) return; // still just a maybe-plant
+      if (traveled < DRAG_THRESHOLD_PX) return; // still just a maybe-water
       drag.watering = true;
       drag.water = startWaterSound();
     }
@@ -1013,9 +1099,13 @@ if (garden) {
 
     if (drag.watering) {
       if (drag.water) stopWaterSound(drag.water);
-    } else {
-      // Never crossed the drag threshold --- a tap. Plant a seed.
-      plantSeed(garden, drag.startX, drag.startY);
+    } else if (activeTool === "shovel") {
+      removePlantNear(drag.startX, drag.startY);
+    } else if (activeTool !== "water") {
+      // Never crossed the drag threshold --- a tap with a species tool
+      // active. Plant a seed. (A tap with the watering can does nothing:
+      // only dragging waters.)
+      plantSeed(garden, drag.startX, drag.startY, activeTool);
     }
 
     drag = null;

@@ -23,6 +23,11 @@ a {
 main {
   flex: 1;
   display: flex;
+
+  /* Anchors .tool-tray, an absolutely-positioned sibling of #garden --- kept
+     out of #garden's own subtree so its buttons never bubble a pointerdown
+     into the garden's plant/water/remove handling underneath them. */
+  position: relative;
 }
 
 #garden {
@@ -139,55 +144,76 @@ main {
   transform-origin: 50% 100%;
 }
 
-/* A quiet hint that dragging waters --- decorative only, so it sits above
-   the soil without ever intercepting the pointer gestures it's hinting at. */
-.watering-cue {
+/* The tool tray: a compact, doodle-styled row of icon buttons, sibling to
+   #garden (see the `position: relative` comment on `main`) rather than a
+   dashboard --- one pill, five small round buttons, no labels needed since
+   each carries its own aria-label. */
+.tool-tray {
   position: absolute;
-  right: 1rem;
+  left: 1rem;
   bottom: 1rem;
-  color: rgb(198 230 250 / 55%);
-  pointer-events: none;
-  animation: watering-cue-bob 3.2s ease-in-out infinite;
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.3rem;
+  background: rgb(255 250 240 / 92%);
+  border: 1.5px solid rgb(60 40 20 / 55%);
+  border-radius: 999px;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 25%);
 }
 
-.watering-cue-drop {
-  opacity: 0;
-  animation: watering-cue-drop-fall 2.4s ease-in infinite;
+.tool-button {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 50%;
+  cursor: pointer;
+  color: rgb(60 40 20 / 75%);
+  transition: background-color 0.15s ease, transform 0.15s ease;
 }
 
-.watering-cue-drop-b {
-  animation-delay: 0.7s;
+.tool-button svg {
+  width: 1.4rem;
+  height: 1.4rem;
 }
 
-@keyframes watering-cue-bob {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-
-  50% {
-    transform: translateY(-3px);
-  }
+.tool-button:hover {
+  background-color: rgb(60 40 20 / 12%);
 }
 
-@keyframes watering-cue-drop-fall {
-  0% {
-    opacity: 0;
-    transform: translateY(-2px);
-  }
+/* The active tool --- the tray's whole reason for existing is to make this
+   state visible without a text label. */
+.tool-button[aria-pressed="true"] {
+  background-color: rgb(255 214 130 / 85%);
+  color: rgb(40 26 12);
+  transform: scale(1.08);
+}
 
-  15% {
+.tool-button:focus-visible {
+  outline: 2px solid #0b5fff;
+  outline-offset: 2px;
+}
+
+/* A shovelled plant fades and shrinks in place, then is removed from the DOM
+   on animationend --- mirrors the water-droplet's own animationend cleanup
+   above, not a native CSS transition. */
+@keyframes plant-remove {
+  from {
     opacity: 1;
+    transform: translate(-50%, -100%) scale(1);
   }
 
-  70% {
-    opacity: 0.7;
-  }
-
-  100% {
+  to {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translate(-50%, -100%) scale(0.5);
   }
+}
+
+.plant-dot.removing {
+  animation: plant-remove 0.25s ease forwards;
 }
 
 /* One droplet per step of an actual watering drag --- a short-lived visual
