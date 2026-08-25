@@ -43,75 +43,100 @@ main {
   white-space: nowrap;
 }
 
-/* Shape-agnostic positioning base --- each species paints its own look on
-   top of these custom props, so growth (main.ts) only ever needs to set
-   size/color/glow, never know which species it's animating. */
+/* Shape-agnostic positioning base --- each species paints its own doodle SVG
+   on top of these custom props, so growth (main.ts) only ever needs to set
+   size/color/glow/growth, never know which species it's animating. Anchored
+   at its bottom-center soil point: growth now reads as reaching upward from
+   the ground, not scaling outward from a centered dot. */
 .plant-dot {
   --plant-size: 0.4rem;
   --plant-color: rgb(77 51 25);
   --plant-glow: 0.05rem;
+  --growth: 0;
 
   position: absolute;
-  width: var(--plant-size);
   height: var(--plant-size);
-  transform: translate(-50%, -50%);
+  aspect-ratio: 120 / 140;
+  transform: translate(-50%, -100%);
+  filter: drop-shadow(0 0 var(--plant-glow) var(--plant-color));
   pointer-events: none;
 }
 
-/* A simple 5-blob bloom: the center circle plus four copies offset in
-   lengths (not percentages) so the whole cluster rescales continuously as
-   --plant-size grows. */
-.plant-flower {
-  border-radius: 50%;
-  background-color: var(--plant-color);
-  box-shadow:
-    0 0 var(--plant-glow) var(--plant-color),
-    calc(var(--plant-size) * 0.85) 0 0 calc(var(--plant-size) * -0.15) var(--plant-color),
-    calc(var(--plant-size) * -0.85) 0 0 calc(var(--plant-size) * -0.15) var(--plant-color),
-    0 calc(var(--plant-size) * 0.85) 0 calc(var(--plant-size) * -0.15) var(--plant-color),
-    0 calc(var(--plant-size) * -0.85) 0 calc(var(--plant-size) * -0.15) var(--plant-color);
+.plant-dot svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
 }
 
-/* A blade, not a dot: the same circle squashed thin and tall, gently
-   swaying. Every keyframe restates the full transform --- an animated
-   transform fully overrides the static one, so a keyframe missing the
-   translate would jump the blade off-center. */
-.plant-grass {
-  border-radius: 50%;
-  background-color: var(--plant-color);
-  box-shadow: 0 0 var(--plant-glow) var(--plant-color);
-  transform: translate(-50%, -50%) scale(0.55, 2);
-  animation: plant-grass-sway 2.6s ease-in-out infinite;
+/* A shared reveal system: every species' doodle is an SVG tree of parts
+   tagged data-phase="seed"|"a"|"b"|"c"|"d", faded and scaled in over
+   successive windows of --growth (0-1, set by main.ts from how far a plant
+   is toward its own species' time-to-mature). Only the art placed into each
+   phase differs per species below --- a fast flower and a slow tree share
+   this exact timing curve; their difference in speed comes entirely from how
+   quickly each one's own --growth reaches 1. */
+.plant-dot [data-phase="seed"] {
+  opacity: clamp(0, calc((0.1 - var(--growth)) * 10), 1);
 }
 
-@keyframes plant-grass-sway {
-  0%,
-  100% {
-    transform: translate(-50%, -50%) scale(0.55, 2) rotate(-4deg);
-  }
-
-  50% {
-    transform: translate(-50%, -50%) scale(0.55, 2) rotate(4deg);
-  }
+.plant-dot [data-phase="a"] {
+  opacity: clamp(0, calc((var(--growth) - 0.05) * 8), 1);
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  transform: scaleY(clamp(0.2, calc(0.2 + var(--growth) * 3), 1));
 }
 
-/* An irregular canopy blob with a trunk anchored to its bottom-center, sized
-   off --plant-size so the trunk scales in naturally as the tree grows. */
-.plant-tree {
-  border-radius: 42% 58% 55% 45% / 55% 45% 58% 42%;
-  background-color: var(--plant-color);
-  box-shadow: 0 0 var(--plant-glow) var(--plant-color);
+.plant-dot [data-phase="b"] {
+  opacity: clamp(0, calc((var(--growth) - 0.3) * 6), 1);
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  transform: scale(clamp(0.3, calc((var(--growth) - 0.2) * 3), 1));
 }
 
-.plant-tree::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 100%;
-  width: calc(var(--plant-size) * 0.22);
-  height: calc(var(--plant-size) * 0.5);
-  background-color: rgb(61 41 20);
-  transform: translateX(-50%);
+.plant-dot [data-phase="c"] {
+  opacity: clamp(0, calc((var(--growth) - 0.56) * 6), 1);
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  transform: scale(clamp(0.3, calc((var(--growth) - 0.46) * 3), 1));
+}
+
+.plant-dot [data-phase="d"] {
+  opacity: clamp(0, calc((var(--growth) - 0.78) * 7), 1);
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  transform: scale(clamp(0.3, calc((var(--growth) - 0.68) * 3), 1));
+}
+
+.plant-dot [data-grow-line] {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.plant-dot [data-phase="a"][data-grow-line] {
+  stroke-dasharray: 1;
+  stroke-dashoffset: calc(1 - clamp(0, (var(--growth) - 0.05) * 8, 1));
+}
+
+.plant-dot [data-phase="c"][data-grow-line] {
+  stroke-dasharray: 1;
+  stroke-dashoffset: calc(1 - clamp(0, (var(--growth) - 0.56) * 6, 1));
+}
+
+/* A thin hand-inked outline on every filled shape --- the detail that reads
+   as doodle rather than flat vector icon. */
+.plant-dot ellipse,
+.plant-dot circle,
+.plant-dot path:not([data-grow-line]) {
+  stroke: rgb(40 30 20 / 45%);
+  stroke-width: 1.3;
+  stroke-linejoin: round;
+}
+
+/* The tree's trunk (a filled tapering shape, not a stroked line) thickens by
+   scaling up from the ground rather than from its own center. */
+.plant-tree [data-phase="b"] {
+  transform-origin: 50% 100%;
 }
 
 /* A quiet hint that dragging waters --- decorative only, so it sits above

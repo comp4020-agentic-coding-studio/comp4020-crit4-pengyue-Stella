@@ -157,22 +157,26 @@ const SPECIES_PROFILES: Record<Species, SpeciesProfile> = {
   flower: {
     timbre: { waveform: "triangle", filterFrequency: 3200, attack: 0.008, release: 0.3, gain: 0.24 },
     registerMultiplier: 2,
+    // Sizes only (not stage/at/color/glow, which the sound side leans on) are
+    // bumped from the original flat-dot scale --- a hand-drawn doodle with a
+    // stem, leaves and five petals needs real room to be legible.
     growth: [
-      { stage: "seed", at: 0, size: 0.35, color: [168, 107, 60], glow: 0.06 },
-      { stage: "sprout", at: 250, size: 0.85, color: [214, 138, 120], glow: 0.35 },
-      { stage: "mature", at: 1100, size: 1.3, color: [236, 72, 153], glow: 0.75 },
+      { stage: "seed", at: 0, size: 1.2, color: [168, 107, 60], glow: 0.06 },
+      { stage: "sprout", at: 250, size: 2.9, color: [214, 138, 120], glow: 0.35 },
+      { stage: "mature", at: 1100, size: 4.5, color: [236, 72, 153], glow: 0.75 },
     ],
     drone: { lfoRateMin: 0.2, lfoRateRange: 0.3, lfoDepthMultiplier: 0.2, gain: 0.045 },
   },
-  // The anchor species: identical numbers to the single-species baseline
-  // this replaced, so nothing about the original feel moves.
+  // The anchor species: identical timing/color/glow numbers to the
+  // single-species baseline this replaced, so nothing about the original
+  // feel moves --- only size grew, for the same doodle-legibility reason.
   grass: {
     timbre: DEFAULT_TIMBRE,
     registerMultiplier: 1,
     growth: [
-      { stage: "seed", at: 0, size: 0.4, color: [77, 51, 25], glow: 0.05 },
-      { stage: "sprout", at: 500, size: 0.9, color: [134, 163, 60], glow: 0.3 },
-      { stage: "mature", at: 2000, size: 1.4, color: [74, 222, 128], glow: 0.6 },
+      { stage: "seed", at: 0, size: 1.5, color: [77, 51, 25], glow: 0.05 },
+      { stage: "sprout", at: 500, size: 3.3, color: [134, 163, 60], glow: 0.3 },
+      { stage: "mature", at: 2000, size: 5.2, color: [74, 222, 128], glow: 0.6 },
     ],
     drone: { lfoRateMin: 0.1, lfoRateRange: 0.15, lfoDepthMultiplier: 0.15, gain: 0.05 },
   },
@@ -180,9 +184,9 @@ const SPECIES_PROFILES: Record<Species, SpeciesProfile> = {
     timbre: { waveform: "sawtooth", filterFrequency: 750, attack: 0.06, release: 0.9, gain: 0.32 },
     registerMultiplier: 0.5,
     growth: [
-      { stage: "seed", at: 0, size: 0.45, color: [61, 41, 20], glow: 0.05 },
-      { stage: "sprout", at: 900, size: 1.0, color: [93, 107, 58], glow: 0.35 },
-      { stage: "mature", at: 3200, size: 1.6, color: [32, 84, 52], glow: 0.5 },
+      { stage: "seed", at: 0, size: 1.9, color: [61, 41, 20], glow: 0.05 },
+      { stage: "sprout", at: 900, size: 4.3, color: [93, 107, 58], glow: 0.35 },
+      { stage: "mature", at: 3200, size: 6.8, color: [32, 84, 52], glow: 0.5 },
     ],
     drone: { lfoRateMin: 0.04, lfoRateRange: 0.06, lfoDepthMultiplier: 0.1, gain: 0.06 },
   },
@@ -240,6 +244,10 @@ interface GrowthFrame {
   size: number;
   color: string;
   glow: number;
+  // 0-1: elapsed / time-to-mature. Drives which parts of a plant's doodle
+  // are revealed (--growth in styles.css) --- separate from stage/size/color
+  // above, which is what the sound side and the glow tint key off.
+  progress: number;
 }
 
 function matureAt(stops: GrowthStop[]): number {
@@ -260,6 +268,7 @@ function stageAt(elapsedMs: number, stops: GrowthStop[]): Stage {
  * waypoints --- a smooth blend the whole way, not a snap between three fixed
  * looks. */
 function growthFrameAt(elapsedMs: number, stops: GrowthStop[]): GrowthFrame {
+  const progress = Math.min(1, elapsedMs / matureAt(stops));
   for (let i = 0; i < stops.length - 1; i++) {
     const from = stops[i];
     const to = stops[i + 1];
@@ -270,17 +279,19 @@ function growthFrameAt(elapsedMs: number, stops: GrowthStop[]): GrowthFrame {
         size: lerp(from.size, to.size, eased),
         color: lerpColor(from.color, to.color, eased),
         glow: lerp(from.glow, to.glow, eased),
+        progress,
       };
     }
   }
   const mature = stops[stops.length - 1];
-  return { size: mature.size, color: formatColor(mature.color), glow: mature.glow };
+  return { size: mature.size, color: formatColor(mature.color), glow: mature.glow, progress };
 }
 
 function applyGrowthFrame(dot: HTMLDivElement, frame: GrowthFrame): void {
   dot.style.setProperty("--plant-size", `${frame.size}rem`);
   dot.style.setProperty("--plant-color", frame.color);
   dot.style.setProperty("--plant-glow", `${frame.glow}rem`);
+  dot.style.setProperty("--growth", `${frame.progress}`);
 }
 
 // --- Sustained layer: mature plants keep quietly singing ------------------
@@ -389,6 +400,272 @@ function startDrone(plant: Plant): void {
   sustainedQueue.push(plant);
 }
 
+// --- Doodle art: hand-drawn, multi-phase plant markup ---------------------
+//
+// A plant's growth is a small SVG tree of parts, not one shape scaling up.
+// Every part is tagged data-phase="seed"|"a"|"b"|"c"|"d"; the shared CSS in
+// styles.css reveals each phase over its own window of --growth (0-1, set by
+// applyGrowthFrame above from how far a plant is toward its own species'
+// time-to-mature). Only which art sits in which phase differs per species,
+// so "fast flower, slow tree" comes entirely from each species' own growth
+// timing, not from separate reveal logic here. Paths are generated fresh per
+// plant from small random jitter --- irregular and asymmetric on purpose, so
+// the look reads as hand-drawn rather than a fixed vector icon, and no two
+// plants of a kind are identical.
+
+function jitter(range: number, rand: () => number): number {
+  return (rand() - 0.5) * 2 * range;
+}
+
+/** An asymmetric almond-shaped leaf or petal from base to tip. */
+function leafPath(
+  baseX: number,
+  baseY: number,
+  tipX: number,
+  tipY: number,
+  width: number,
+  rand: () => number,
+): string {
+  const mx = (baseX + tipX) / 2;
+  const my = (baseY + tipY) / 2;
+  const dx = tipX - baseX;
+  const dy = tipY - baseY;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len;
+  const ny = dx / len;
+  const w1 = width * (0.9 + rand() * 0.4);
+  const w2 = width * (0.6 + rand() * 0.4);
+  const bowX = jitter(len * 0.12, rand);
+  const bowY = jitter(len * 0.12, rand);
+  const leftX = mx + nx * w1 + bowX;
+  const leftY = my + ny * w1 + bowY;
+  const rightX = mx - nx * w2 + bowX;
+  const rightY = my - ny * w2 + bowY;
+  return (
+    `M ${baseX.toFixed(1)} ${baseY.toFixed(1)} ` +
+    `Q ${leftX.toFixed(1)} ${leftY.toFixed(1)} ${tipX.toFixed(1)} ${tipY.toFixed(1)} ` +
+    `Q ${rightX.toFixed(1)} ${rightY.toFixed(1)} ${baseX.toFixed(1)} ${baseY.toFixed(1)} Z`
+  );
+}
+
+/** An irregular closed blob --- used for leaf and canopy clusters so a group
+ * of these reads as foliage, never as a uniform oval. */
+function blobPath(cx: number, cy: number, r: number, points: number, rand: () => number): string {
+  const angleStep = (Math.PI * 2) / points;
+  const coords: [number, number][] = [];
+  for (let i = 0; i < points; i++) {
+    const angle = i * angleStep + jitter(0.2, rand);
+    const radius = r * (0.72 + rand() * 0.5);
+    coords.push([cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius]);
+  }
+  let d = `M ${coords[0][0].toFixed(1)} ${coords[0][1].toFixed(1)} `;
+  for (let i = 0; i < points; i++) {
+    const [x0, y0] = coords[i];
+    const [x1, y1] = coords[(i + 1) % points];
+    const mx = (x0 + x1) / 2 + jitter(r * 0.25, rand);
+    const my = (y0 + y1) / 2 + jitter(r * 0.25, rand);
+    d += `Q ${mx.toFixed(1)} ${my.toFixed(1)} ${x1.toFixed(1)} ${y1.toFixed(1)} `;
+  }
+  return d + "Z";
+}
+
+/** A single bowed stem/branch/twig centerline --- drawn with stroke-dasharray
+ * in CSS so it reveals as if growing, rather than popping in at full length. */
+function stemPath(baseX: number, baseY: number, tipX: number, tipY: number, bow: number): string {
+  const mx = (baseX + tipX) / 2 + bow;
+  const my = (baseY + tipY) / 2;
+  return `M ${baseX.toFixed(1)} ${baseY.toFixed(1)} Q ${mx.toFixed(1)} ${my.toFixed(1)} ${tipX.toFixed(1)} ${tipY.toFixed(1)}`;
+}
+
+/** A filled, tapering trunk silhouette --- wide at the base, narrow at the
+ * tip. A tree's trunk thickens by scaling up this filled shape rather than by
+ * animating stroke-width, which doesn't render reliably across renderers. */
+function trunkPath(
+  baseX: number,
+  baseY: number,
+  tipX: number,
+  tipY: number,
+  baseWidth: number,
+  tipWidth: number,
+  rand: () => number,
+): string {
+  const dx = tipX - baseX;
+  const dy = tipY - baseY;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len;
+  const ny = dx / len;
+  const bow = jitter(len * 0.06, rand);
+  const midX = (baseX + tipX) / 2 + bow;
+  const midY = (baseY + tipY) / 2;
+  const midWidth = (baseWidth + tipWidth) / 2;
+  const leftBase: [number, number] = [baseX + nx * baseWidth, baseY + ny * baseWidth];
+  const rightBase: [number, number] = [baseX - nx * baseWidth, baseY - ny * baseWidth];
+  const leftTip: [number, number] = [tipX + nx * tipWidth, tipY + ny * tipWidth];
+  const rightTip: [number, number] = [tipX - nx * tipWidth, tipY - ny * tipWidth];
+  const leftMid: [number, number] = [midX + nx * midWidth, midY + ny * midWidth];
+  const rightMid: [number, number] = [midX - nx * midWidth, midY - ny * midWidth];
+  const f = (n: number) => n.toFixed(1);
+  return (
+    `M ${f(leftBase[0])} ${f(leftBase[1])} ` +
+    `Q ${f(leftMid[0])} ${f(leftMid[1])} ${f(leftTip[0])} ${f(leftTip[1])} ` +
+    `L ${f(rightTip[0])} ${f(rightTip[1])} ` +
+    `Q ${f(rightMid[0])} ${f(rightMid[1])} ${f(rightBase[0])} ${f(rightBase[1])} Z`
+  );
+}
+
+/** A point at `length` from a base, at `angleDeg` measured from straight up. */
+function fromBase(angleDeg: number, length: number, baseX: number, baseY: number): [number, number] {
+  const rad = (angleDeg * Math.PI) / 180;
+  return [baseX + Math.sin(rad) * length, baseY - Math.cos(rad) * length];
+}
+
+// Every species' doodle shares one ground point and one viewBox, so the
+// container's aspect-ratio in styles.css and the anchor in plantSeed line up
+// for all three without species-specific positioning.
+const PLANT_BASE_X = 60;
+const PLANT_BASE_Y = 128;
+
+function seedMarkup(rx: number, ry: number, color: string): string {
+  return `<ellipse data-phase="seed" cx="${PLANT_BASE_X}" cy="${PLANT_BASE_Y - 1}" rx="${rx}" ry="${ry}" fill="${color}"/>`;
+}
+
+/** seed -> small stem -> leaves -> bud -> open flower. */
+function flowerMarkup(rand: () => number): string {
+  const baseX = PLANT_BASE_X;
+  const baseY = PLANT_BASE_Y;
+  const stemTip: [number, number] = [baseX + jitter(4, rand), 66 + jitter(4, rand)];
+  const stemBow = jitter(8, rand);
+  const leafABase: [number, number] = [
+    baseX + (stemTip[0] - baseX) * 0.62,
+    baseY + (stemTip[1] - baseY) * 0.62,
+  ];
+  const leafATip: [number, number] = [leafABase[0] - 16 - rand() * 4, leafABase[1] - 6 - rand() * 4];
+  const leafBBase: [number, number] = [
+    baseX + (stemTip[0] - baseX) * 0.42,
+    baseY + (stemTip[1] - baseY) * 0.42,
+  ];
+  const leafBTip: [number, number] = [leafBBase[0] + 17 + rand() * 4, leafBBase[1] - 8 - rand() * 4];
+  const center: [number, number] = [stemTip[0], stemTip[1] - 2];
+  const petals = [-18, 54, 126, 198, 270]
+    .map((a) => a + jitter(8, rand))
+    .map((a) => {
+      const tip = fromBase(a, 13 + rand() * 2, center[0], center[1]);
+      return `<path data-phase="d" d="${leafPath(center[0], center[1], tip[0], tip[1], 6.5, rand)}" fill="#ec4899"/>`;
+    })
+    .join("");
+
+  return `
+    ${seedMarkup(5, 3.2, "#7a4a26")}
+    <path data-phase="a" data-grow-line="1" pathLength="1" d="${stemPath(baseX, baseY, stemTip[0], stemTip[1], stemBow)}" stroke="#4a8c3a" stroke-width="3"/>
+    <path data-phase="b" d="${leafPath(leafABase[0], leafABase[1], leafATip[0], leafATip[1], 8, rand)}" fill="#5ba24a"/>
+    <path data-phase="b" d="${leafPath(leafBBase[0], leafBBase[1], leafBTip[0], leafBTip[1], 8, rand)}" fill="#4a8c3a"/>
+    <circle data-phase="c" cx="${stemTip[0]}" cy="${stemTip[1] - 2}" r="6" fill="#d98aa3"/>
+    ${petals}
+    <circle data-phase="d" cx="${center[0]}" cy="${center[1]}" r="4.5" fill="#f5c542"/>
+  `;
+}
+
+/** seed -> several shoots -> branching leafy shrub. */
+function grassMarkup(rand: () => number): string {
+  const baseX = PLANT_BASE_X;
+  const baseY = PLANT_BASE_Y;
+  const shootAngles = [-22, -7, 8, 22].map((a) => a + jitter(6, rand));
+  const shoots = shootAngles
+    .map((a, i) => {
+      const len = 30 + i * 3 + rand() * 6;
+      const tip = fromBase(a, len, baseX, baseY - 1);
+      const bow = jitter(6, rand);
+      return `<path data-phase="a" data-grow-line="1" pathLength="1" d="${stemPath(baseX, baseY, tip[0], tip[1], bow)}" stroke="#4a8c3a" stroke-width="2.4"/>`;
+    })
+    .join("");
+  const clusterCenters = shootAngles.map((a) => fromBase(a, 34 + rand() * 6, baseX, baseY - 1));
+  const earlyLeaves = clusterCenters
+    .map((c) => `<path data-phase="b" d="${blobPath(c[0], c[1], 7, 6, rand)}" fill="#5ba24a"/>`)
+    .join("");
+  const twigCenters: [number, number][] = [
+    fromBase(-30 + jitter(6, rand), 24 + rand() * 4, baseX, baseY - 1),
+    fromBase(32 + jitter(6, rand), 26 + rand() * 4, baseX, baseY - 1),
+  ];
+  const twigs = twigCenters
+    .map(
+      (c) =>
+        `<path data-phase="c" data-grow-line="1" pathLength="1" d="${stemPath(baseX, baseY - 4, c[0], c[1], jitter(6, rand))}" stroke="#3d7a30" stroke-width="2"/>`,
+    )
+    .join("");
+  const bushCenters: [number, number][] = [
+    [baseX, baseY - 38],
+    [baseX - 14, baseY - 30],
+    [baseX + 14, baseY - 30],
+    [baseX - 20, baseY - 46],
+    [baseX + 18, baseY - 44],
+    [baseX, baseY - 54],
+    [baseX - 8, baseY - 20],
+    [baseX + 9, baseY - 20],
+  ];
+  const bushBlobs = bushCenters
+    .map(
+      ([cx, cy], i) =>
+        `<path data-phase="d" d="${blobPath(cx, cy, 12 - i * 0.3, 7, rand)}" fill="${i % 2 ? "#4a8c3a" : "#5ba24a"}"/>`,
+    )
+    .join("");
+
+  return `
+    ${seedMarkup(5, 3.2, "#7a4a26")}
+    ${shoots}
+    ${earlyLeaves}
+    ${twigs}
+    ${bushBlobs}
+  `;
+}
+
+/** seed -> stem -> trunk -> branches -> expanding canopy. */
+function treeMarkup(rand: () => number): string {
+  const baseX = PLANT_BASE_X;
+  const baseY = PLANT_BASE_Y;
+  const trunkTip: [number, number] = [baseX + jitter(3, rand), 58 + jitter(4, rand)];
+  const stemBow = jitter(6, rand);
+  const branchAngles = [-50, -20, 20, 50].map((a) => a + jitter(8, rand));
+  const branchBases: [number, number][] = [0.9, 0.65, 0.65, 0.9].map((f) => [
+    baseX + (trunkTip[0] - baseX) * f,
+    baseY + (trunkTip[1] - baseY) * f,
+  ]);
+  const branches = branchAngles
+    .map((a, i) => {
+      const len = 22 + rand() * 8;
+      const tip = fromBase(a, len, branchBases[i][0], branchBases[i][1]);
+      return `<path data-phase="c" data-grow-line="1" pathLength="1" d="${stemPath(branchBases[i][0], branchBases[i][1], tip[0], tip[1], jitter(6, rand))}" stroke="#3d2a18" stroke-width="2.6"/>`;
+    })
+    .join("");
+  const canopyCenters: [number, number][] = [
+    [trunkTip[0], trunkTip[1] - 18],
+    [trunkTip[0] - 20, trunkTip[1] - 6],
+    [trunkTip[0] + 20, trunkTip[1] - 6],
+    [trunkTip[0] - 12, trunkTip[1] - 26],
+    [trunkTip[0] + 12, trunkTip[1] - 26],
+    [trunkTip[0], trunkTip[1] - 34],
+  ];
+  const canopy = canopyCenters
+    .map(
+      ([cx, cy], i) =>
+        `<path data-phase="d" d="${blobPath(cx, cy, 16 - i * 0.8, 8, rand)}" fill="${i % 2 ? "#20542f" : "#2f6d3f"}"/>`,
+    )
+    .join("");
+
+  return `
+    ${seedMarkup(5.5, 3.4, "#5a3a1e")}
+    <path data-phase="a" data-grow-line="1" pathLength="1" d="${stemPath(baseX, baseY, trunkTip[0], trunkTip[1], stemBow)}" stroke="#4a2f18" stroke-width="2.2"/>
+    <path data-phase="b" d="${trunkPath(baseX, baseY, trunkTip[0], trunkTip[1], 4.6, 1.6, rand)}" fill="#4a2f18"/>
+    ${branches}
+    ${canopy}
+  `;
+}
+
+const SPECIES_MARKUP: Record<Species, (rand: () => number) => string> = {
+  flower: flowerMarkup,
+  grass: grassMarkup,
+  tree: treeMarkup,
+};
+
 // --- Garden: tap soil to plant a seed, watch it grow, forever -------------
 
 interface Plant {
@@ -416,6 +693,7 @@ function plantSeed(garden: HTMLElement, x: number, y: number): void {
   dot.className = `plant-dot plant-${species}`;
   dot.style.left = `${x}px`;
   dot.style.top = `${y}px`;
+  dot.innerHTML = `<svg viewBox="0 0 120 140" preserveAspectRatio="xMidYMax meet">${SPECIES_MARKUP[species](Math.random)}</svg>`;
   applyGrowthFrame(dot, growthFrameAt(0, profile.growth));
   garden.appendChild(dot);
 
