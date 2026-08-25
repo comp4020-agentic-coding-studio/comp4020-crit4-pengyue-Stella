@@ -44,19 +44,16 @@ main {
 }
 
 .seed {
-  position: absolute;
-  width: 1.25rem;
-  height: 1.25rem;
-  border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, #d9f99d, #65a30d);
-  box-shadow: 0 0 0.75rem rgb(190 242 100 / 70%);
-  transform: translate(-50%, -50%) scale(0);
-  animation: seed-pop 0.3s ease-out forwards;
-  pointer-events: none;
-}
+  --seed-size: 0.4rem;
+  --seed-color: rgb(77 51 25);
+  --seed-glow: 0.05rem;
 
-@keyframes seed-pop {
-  to {
-    transform: translate(-50%, -50%) scale(1);
-  }
+  position: absolute;
+  width: var(--seed-size);
+  height: var(--seed-size);
+  border-radius: 50%;
+  background-color: var(--seed-color);
+  box-shadow: 0 0 var(--seed-glow) var(--seed-color);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
