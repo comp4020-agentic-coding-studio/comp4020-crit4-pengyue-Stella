@@ -1,12 +1,13 @@
 // Steps 1-5 (see PLAN.md): tone engine + scale lock, tap soil to plant a
 // seed, a permanent seed -> sprout -> mature growth, a quiet evolving
-// sustained layer once mature (bounded by a voice cap) instead of going
-// silent, dragging through the garden to water, and three plant species ---
-// flower, grass, tree --- differing only in the parameters fed into this one
-// shared Voice/growth/drone machinery. A small tool tray (index.html) picks
-// which of those species gets planted, or switches to the watering can
-// (unchanged drag-to-water) or the shovel (tap a plant to remove it, with its
-// own one-shot removal sound) --- see the Tool section below.
+// sustained layer for most species once mature (bounded by a voice cap,
+// opt-in per species) instead of going silent, dragging through the garden
+// to water, and five plant species --- flower, grass, tree, mushroom, reed
+// --- differing only in the parameters fed into this one shared Voice/
+// growth/drone machinery. A small tool tray (index.html) picks which of
+// those species gets planted, or switches to the watering can (unchanged
+// drag-to-water) or the shovel (tap a plant to remove it, with its own
+// one-shot removal sound) --- see the Tool section below.
 
 let audioContext: AudioContext | null = null;
 
@@ -124,14 +125,14 @@ interface GrowthStop {
   glow: number; // rem
 }
 
-// --- Species: three plant types sharing one Voice/growth/drone machinery --
+// --- Species: five plant types sharing one Voice/growth/drone machinery ---
 //
 // A species is nothing but a bundle of parameters --- its own timbre, octave,
-// growth curve, and drone character --- fed into the same functions every
-// other species uses. Which one gets planted is chosen from the tool tray
-// (see the Tool section below), never randomly.
+// growth curve, and (optional) drone character --- fed into the same
+// functions every other species uses. Which one gets planted is chosen from
+// the tool tray (see the Tool section below), never randomly.
 
-type Species = "flower" | "grass" | "tree";
+type Species = "flower" | "grass" | "tree" | "mushroom" | "reed";
 
 interface DroneProfile {
   lfoRateMin: number;
@@ -143,12 +144,15 @@ interface DroneProfile {
 interface SpeciesProfile {
   timbre: Timbre;
   // Which octave-band of the locked scale this species draws from --- bands
-  // are one octave wide and contiguous (see SPECIES_OCTAVE_SPAN), so
-  // tree/bush/flower stack into distinct low/mid/high registers instead of
-  // all three sharing the same range at different transpositions.
+  // are one octave wide and contiguous (see SPECIES_OCTAVE_SPAN), so all
+  // five species stack into distinct registers instead of sharing the same
+  // range at different transpositions.
   octaveOffset: number;
   growth: GrowthStop[];
-  drone: DroneProfile;
+  // Absent for a species that's mostly event-based rather than sustained
+  // (mushroom) --- startDrone/updatePlants/waterPlant all skip the drone
+  // machinery entirely rather than starting one nobody asked for.
+  drone?: DroneProfile;
 }
 
 const SPECIES_PROFILES: Record<Species, SpeciesProfile> = {
@@ -184,7 +188,8 @@ const SPECIES_PROFILES: Record<Species, SpeciesProfile> = {
     drone: { lfoRateMin: 0.1, lfoRateRange: 0.15, lfoDepthMultiplier: 0.15, gain: 0.05 },
   },
   // The low, warm foundation: slowest to mature, slowest attack/longest
-  // release and loudest of the three, sitting in the bottom octave band.
+  // release and loudest of the original three, sitting in the bottom octave
+  // band of that trio.
   tree: {
     timbre: { waveform: "sawtooth", filterFrequency: 620, attack: 0.06, release: 0.9, gain: 0.32 },
     octaveOffset: 0,
@@ -194,6 +199,35 @@ const SPECIES_PROFILES: Record<Species, SpeciesProfile> = {
       { stage: "mature", at: 3200, size: 7.4, color: [32, 84, 52], glow: 0.5 },
     ],
     drone: { lfoRateMin: 0.04, lfoRateRange: 0.06, lfoDepthMultiplier: 0.1, gain: 0.06 },
+  },
+  // Short, woody, percussive: a muffled triangle through a low filter with a
+  // near-instant attack and quick decay --- a knock, not a note. One octave
+  // below tree, so it reads as a low accent under the foundation rather than
+  // another bass voice competing with it. Fastest of all five to mature, and
+  // no drone: it's mostly event-based, so it never joins the sustained layer
+  // --- every stage blip and the watering chime are its whole voice.
+  mushroom: {
+    timbre: { waveform: "triangle", filterFrequency: 950, attack: 0.002, release: 0.14, gain: 0.26 },
+    octaveOffset: -1,
+    growth: [
+      { stage: "seed", at: 0, size: 1.0, color: [90, 60, 40], glow: 0.05 },
+      { stage: "sprout", at: 180, size: 2.0, color: [216, 196, 150], glow: 0.25 },
+      { stage: "mature", at: 650, size: 3.4, color: [196, 74, 58], glow: 0.55 },
+    ],
+  },
+  // Airy, flute-like: a plain sine (the purest tone of the five) with a
+  // gentle breathy attack and a long tail, quieter than every other
+  // species' voice and the lightest drone of all --- floats above the
+  // melody rather than competing with it. One octave above flower.
+  reed: {
+    timbre: { waveform: "sine", filterFrequency: 2600, attack: 0.03, release: 0.7, gain: 0.18 },
+    octaveOffset: 3,
+    growth: [
+      { stage: "seed", at: 0, size: 1.4, color: [70, 55, 35], glow: 0.05 },
+      { stage: "sprout", at: 600, size: 3.6, color: [140, 168, 140], glow: 0.3 },
+      { stage: "mature", at: 1600, size: 5.0, color: [150, 196, 168], glow: 0.55 },
+    ],
+    drone: { lfoRateMin: 0.15, lfoRateRange: 0.25, lfoDepthMultiplier: 0.15, gain: 0.03 },
   },
 };
 
@@ -352,12 +386,14 @@ function stopDrone(plant: Plant): void {
 /** Starts a mature plant's quiet, ever-so-slowly wobbling sustained note,
  * evicting the oldest sustained voice first if the cap is already full. */
 function startDrone(plant: Plant): void {
+  const profile = SPECIES_PROFILES[plant.species];
+  if (!profile.drone) return;
+
   if (sustainedQueue.length >= MAX_SUSTAINED_VOICES) {
     const oldest = sustainedQueue.shift();
     if (oldest) stopDrone(oldest);
   }
 
-  const profile = SPECIES_PROFILES[plant.species];
   const context = getAudioContext();
   const now = context.currentTime;
 
@@ -724,10 +760,68 @@ function treeMarkup(rand: () => number): string {
   `;
 }
 
+/** seed -> thin sprouting line -> stout stalk -> gill line -> domed cap. */
+function mushroomMarkup(rand: () => number): string {
+  const baseX = PLANT_BASE_X;
+  const baseY = PLANT_BASE_Y;
+  const stemTip: [number, number] = [baseX + jitter(2, rand), 90 + jitter(3, rand)];
+  const stemBow = jitter(3, rand);
+  const capCenter: [number, number] = [stemTip[0] + jitter(2, rand), stemTip[1] - 9];
+  const capRadius = 15 + rand() * 3;
+  const spotAngles = [-50, 10, 70].map((a) => a + jitter(20, rand));
+  const spots = spotAngles
+    .map((a) => {
+      const [sx, sy] = fromBase(a, capRadius * 0.5, capCenter[0], capCenter[1]);
+      return `<circle data-phase="d" cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${(1.6 + rand()).toFixed(1)}" fill="#f4e6c8"/>`;
+    })
+    .join("");
+
+  return `
+    ${seedMarkup(5, 3.2, "#7a4a26")}
+    <path data-phase="a" data-grow-line="1" pathLength="1" d="${stemPath(baseX, baseY, stemTip[0], stemTip[1], stemBow)}" stroke="#d8c39a" stroke-width="2.4"/>
+    <path data-phase="b" d="${trunkPath(baseX, baseY, stemTip[0], stemTip[1], 3.2, 4.6, rand)}" fill="#e8d5ad"/>
+    <line data-phase="c" x1="${(stemTip[0] - 5).toFixed(1)}" y1="${(stemTip[1] - 2).toFixed(1)}" x2="${(stemTip[0] + 5).toFixed(1)}" y2="${(stemTip[1] - 2).toFixed(1)}" stroke="#8a5a3a" stroke-width="1"/>
+    <path data-phase="d" d="${blobPath(capCenter[0], capCenter[1], capRadius, 9, rand)}" fill="#c9482e"/>
+    ${spots}
+  `;
+}
+
+/** seed -> a handful of tall, near-vertical blades -> pale plumes at their tips. */
+function reedMarkup(rand: () => number): string {
+  const baseX = PLANT_BASE_X;
+  const baseY = PLANT_BASE_Y;
+  const bladeAngles = [-8, -2, 3, 9].map((a) => a + jitter(3, rand));
+  const bladePalette = ["#8fae7a", "#a8c290", "#7a9c68"];
+  const bladeLengths = bladeAngles.map((_, i) => 60 + i * 6 + rand() * 8);
+  const blades = bladeAngles
+    .map((a, i) => {
+      const tip = fromBase(a, bladeLengths[i], baseX, baseY - 1);
+      const bow = jitter(4, rand);
+      return `<path data-phase="a" data-grow-line="1" pathLength="1" d="${stemPath(baseX, baseY, tip[0], tip[1], bow)}" stroke="${bladePalette[i % bladePalette.length]}" stroke-width="2"/>`;
+    })
+    .join("");
+  const plumes = bladeAngles
+    .map((a, i) => fromBase(a, bladeLengths[i], baseX, baseY - 1))
+    .filter((_, i) => i % 2 === 0)
+    .map(([tx, ty]) => {
+      const tip: [number, number] = [tx + jitter(3, rand), ty - 6 - rand() * 3];
+      return `<path data-phase="d" d="${leafPath(tx, ty, tip[0], tip[1], 2.6, rand)}" fill="#e6ddb8"/>`;
+    })
+    .join("");
+
+  return `
+    ${seedMarkup(5, 3.2, "#5a4a30")}
+    ${blades}
+    ${plumes}
+  `;
+}
+
 const SPECIES_MARKUP: Record<Species, (rand: () => number) => string> = {
   flower: flowerMarkup,
   grass: grassMarkup,
   tree: treeMarkup,
+  mushroom: mushroomMarkup,
+  reed: reedMarkup,
 };
 
 // --- Garden: tap soil to plant a seed, watch it grow, forever -------------
@@ -819,9 +913,10 @@ function waterPlant(plant: Plant, now: number): void {
 
   if (plant.drone) {
     brightenDrone(plant.drone);
-  } else if (plant.matured) {
+  } else if (plant.matured && profile.drone) {
     // Its drone was evicted under the voice cap --- watering revives it,
-    // still subject to that same cap.
+    // still subject to that same cap. A droneless species (mushroom) has
+    // no drone to revive --- the one-shot chime above is its whole reaction.
     startDrone(plant);
   }
 }
@@ -1091,7 +1186,7 @@ function updatePlants(): void {
 
     if (elapsed >= matureAt(profile.growth)) {
       plant.matured = true;
-      startDrone(plant);
+      if (profile.drone) startDrone(plant);
     }
   }
 

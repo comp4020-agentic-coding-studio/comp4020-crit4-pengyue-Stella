@@ -308,8 +308,10 @@ main {
 }
 
 /* The tree's trunk (a filled tapering shape, not a stroked line) thickens by
-   scaling up from the ground rather than from its own center. */
-.plant-tree [data-phase="b"] {
+   scaling up from the ground rather than from its own center. Mushroom's
+   stalk is the same kind of shape (a filled trunkPath) for the same reason. */
+.plant-tree [data-phase="b"],
+.plant-mushroom [data-phase="b"] {
   transform-origin: 50% 100%;
 }
 
@@ -325,6 +327,7 @@ main {
   left: 1.75rem;
   bottom: 1.75rem;
   display: flex;
+  flex-wrap: wrap;
   gap: 0.3rem;
   padding: 0.3rem;
   background: linear-gradient(180deg, rgb(90 54 32 / 92%), rgb(58 34 20 / 92%));
