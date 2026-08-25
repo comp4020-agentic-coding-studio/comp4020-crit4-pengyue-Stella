@@ -40,14 +40,17 @@ function getMasterGain(context: AudioContext): GainNode {
 // so "no wrong notes" is structural, not a filter bolted on later.
 const SCALE_DEGREES = [0, 2, 4, 7, 9];
 const ROOT_MIDI = 57; // A3
-const OCTAVE_SPAN = 3;
+const SPECIES_OCTAVE_SPAN = 1; // each species draws from exactly one octave
 
-/** Quantizes a horizontal position (0-1) to a frequency on the locked scale. */
-export function xToPitch(x: number): number {
+/** Quantizes a horizontal position (0-1) to a frequency on the locked scale,
+ * within one species' own octave band --- so tree/bush/flower stack into
+ * distinct low/mid/high registers instead of all three sharing one range at
+ * different transpositions. */
+export function xToPitch(x: number, octaveOffset: number): number {
   const clamped = Math.min(1, Math.max(0, x));
-  const steps = SCALE_DEGREES.length * OCTAVE_SPAN;
+  const steps = SCALE_DEGREES.length * SPECIES_OCTAVE_SPAN;
   const index = Math.min(steps - 1, Math.floor(clamped * steps));
-  const octave = Math.floor(index / SCALE_DEGREES.length);
+  const octave = octaveOffset + Math.floor(index / SCALE_DEGREES.length);
   const degree = SCALE_DEGREES[index % SCALE_DEGREES.length];
   const midi = ROOT_MIDI + degree + octave * 12;
   return 440 * 2 ** ((midi - 69) / 12);
@@ -139,17 +142,21 @@ interface DroneProfile {
 
 interface SpeciesProfile {
   timbre: Timbre;
-  // Octave shift only --- must stay a power of 2, or a species would drift
-  // off the pentatonic lock that xToPitch guarantees everyone else.
-  registerMultiplier: number;
+  // Which octave-band of the locked scale this species draws from --- bands
+  // are one octave wide and contiguous (see SPECIES_OCTAVE_SPAN), so
+  // tree/bush/flower stack into distinct low/mid/high registers instead of
+  // all three sharing the same range at different transpositions.
+  octaveOffset: number;
   growth: GrowthStop[];
   drone: DroneProfile;
 }
 
 const SPECIES_PROFILES: Record<Species, SpeciesProfile> = {
+  // The high, bright melodic lead: fastest to mature, quickest attack/
+  // shortest release of the three, sitting in the top octave band.
   flower: {
     timbre: { waveform: "triangle", filterFrequency: 3200, attack: 0.008, release: 0.3, gain: 0.24 },
-    registerMultiplier: 2,
+    octaveOffset: 2,
     // Sizes only (not stage/at/color/glow, which the sound side leans on) are
     // bumped from the original flat-dot scale --- a hand-drawn doodle with a
     // stem, leaves and five petals needs real room to be legible.
@@ -160,12 +167,15 @@ const SPECIES_PROFILES: Record<Species, SpeciesProfile> = {
     ],
     drone: { lfoRateMin: 0.2, lfoRateRange: 0.3, lfoDepthMultiplier: 0.2, gain: 0.045 },
   },
-  // The anchor species: identical timing/color/glow numbers to the
-  // single-species baseline this replaced, so nothing about the original
-  // feel moves --- only size grew, for the same doodle-legibility reason.
+  // The mid-range harmony layer: a plain sine (deliberately unobtrusive, so
+  // it fills under the melody rather than competing with it) with a touch
+  // more release than a pluck for a pad-like sustain, in the middle octave
+  // band. Timing/color/glow numbers are otherwise the original single-
+  // species baseline this replaced --- only size grew, for the same
+  // doodle-legibility reason as flower/tree.
   grass: {
-    timbre: DEFAULT_TIMBRE,
-    registerMultiplier: 1,
+    timbre: { waveform: "sine", filterFrequency: 2000, attack: 0.02, release: 0.6, gain: 0.28 },
+    octaveOffset: 1,
     growth: [
       { stage: "seed", at: 0, size: 1.5, color: [77, 51, 25], glow: 0.05 },
       { stage: "sprout", at: 500, size: 3.3, color: [134, 163, 60], glow: 0.3 },
@@ -173,9 +183,11 @@ const SPECIES_PROFILES: Record<Species, SpeciesProfile> = {
     ],
     drone: { lfoRateMin: 0.1, lfoRateRange: 0.15, lfoDepthMultiplier: 0.15, gain: 0.05 },
   },
+  // The low, warm foundation: slowest to mature, slowest attack/longest
+  // release and loudest of the three, sitting in the bottom octave band.
   tree: {
-    timbre: { waveform: "sawtooth", filterFrequency: 750, attack: 0.06, release: 0.9, gain: 0.32 },
-    registerMultiplier: 0.5,
+    timbre: { waveform: "sawtooth", filterFrequency: 620, attack: 0.06, release: 0.9, gain: 0.32 },
+    octaveOffset: 0,
     growth: [
       { stage: "seed", at: 0, size: 1.9, color: [61, 41, 20], glow: 0.05 },
       { stage: "sprout", at: 900, size: 4.3, color: [93, 107, 58], glow: 0.35 },
@@ -728,7 +740,7 @@ const plants: Plant[] = [];
 
 function plantSeed(garden: HTMLElement, x: number, y: number, species: Species): void {
   const profile = SPECIES_PROFILES[species];
-  const pitch = xToPitch(x / garden.clientWidth) * profile.registerMultiplier;
+  const pitch = xToPitch(x / garden.clientWidth, profile.octaveOffset);
   playVoice(pitch, timbreForStage("seed", profile.timbre));
 
   const dot = document.createElement("div");
