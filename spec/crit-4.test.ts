@@ -41,9 +41,11 @@ describe("crit-4: an instrument", () => {
 
   it("is playable via pointer input, so it works at both marked viewports", () => {
     // Pointer events cover mouse and touch alike, which is what desktop and
-    // phone crit viewports actually have at hand.
+    // phone crit viewports actually have at hand. Quote char is `["'\`]`, not
+    // just ["'], because esbuild's minifier rewrites plain string literals to
+    // backticks in this toolchain.
     const listensForPointerInput =
-      /addEventListener\(\s*["'](pointerdown|pointerup|mousedown|touchstart|click)["']/.test(
+      /addEventListener\(\s*["'`](pointerdown|pointerup|mousedown|touchstart|click)["'`]/.test(
         bundle,
       );
     expect(
