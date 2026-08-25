@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sound Garden</title>
+    <title>Sonic Garden</title>
     <meta
       name="description"
       content="A tiny musical instrument: tap the soil to plant sounds on a scale that can't play a wrong note."
@@ -21,18 +21,23 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <header>
+    <header class="visually-hidden">
       <nav aria-label="Primary">
         <a href="./">Home</a>
       </nav>
     </header>
     <main>
-      <h1 class="visually-hidden">Sound Garden</h1>
       <div
         id="garden"
         data-testid="garden"
         aria-label="Garden soil --- tap to use the selected tool; the watering can also works by dragging"
       >
+        <!--
+          A little staked sign standing in the bed itself, not page chrome ---
+          pointer-events:none like .garden-decor below, so it never intercepts
+          a tap. Still the page's one real heading (styles.css: .garden-sign).
+        -->
+        <h1 class="garden-sign">Sonic Garden</h1>
         <!--
           Purely decorative --- pointer-events:none on .garden-decor (styles.css)
           lets every tap/drag pass straight through to #garden's own listener,
@@ -126,59 +131,57 @@
       <div class="tool-tray" role="group" aria-label="Garden tools" data-testid="tool-tray">
         <button type="button" class="tool-button" data-tool="flower" aria-pressed="true" aria-label="Flower">
           <svg viewBox="0 0 40 40" aria-hidden="true" focusable="false">
-            <path d="M20 34C20 24 18 20 20 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-            <path d="M20 24Q13 22 12 27" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-            <path d="M20 20Q27 19 28 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-            <g fill="currentColor" stroke="currentColor" stroke-width="1.2">
-              <circle cx="20" cy="8" r="3" />
-              <circle cx="14" cy="10" r="3" />
-              <circle cx="26" cy="10" r="3" />
-              <circle cx="16" cy="4" r="3" />
-              <circle cx="24" cy="4" r="3" />
+            <path d="M20 34Q19 24 20 16" fill="none" stroke="#4a8c3a" stroke-width="2" stroke-linecap="round" />
+            <path d="M20 26Q14 24 13 28" fill="#5ba24a" stroke="rgb(40 30 20 / 45%)" stroke-width="1" />
+            <g fill="#ec4899" stroke="rgb(40 30 20 / 45%)" stroke-width="1">
+              <circle cx="20" cy="8" r="3.4" />
+              <circle cx="13.5" cy="11" r="3.4" fill="#f472b6" />
+              <circle cx="26.5" cy="11" r="3.4" fill="#f472b6" />
+              <circle cx="15" cy="17" r="3.4" fill="#e0559c" />
+              <circle cx="25" cy="17" r="3.4" fill="#e0559c" />
             </g>
-            <circle cx="20" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="1.4" />
+            <circle cx="20" cy="13" r="2.6" fill="#f5c542" stroke="rgb(40 30 20 / 45%)" stroke-width="1" />
           </svg>
         </button>
         <button type="button" class="tool-button" data-tool="grass" aria-pressed="false" aria-label="Bush">
           <svg viewBox="0 0 40 40" aria-hidden="true" focusable="false">
             <path
               d="M8 30c-3-5 1-11 6-9 1-6 10-6 11 0 6-1 9 5 6 10-1 4-6 6-9 4-1 2-4 2-6 1-4 2-8-1-8-6z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.6"
+              fill="#5ba24a"
+              stroke="rgb(40 30 20 / 45%)"
+              stroke-width="1.2"
               stroke-linejoin="round"
             />
+            <path d="M15 21a5 5 0 1 0 8-4" fill="#4a8c3a" stroke="rgb(40 30 20 / 45%)" stroke-width="1" />
+            <circle cx="24" cy="26" r="1.6" fill="#d9534f" />
           </svg>
         </button>
         <button type="button" class="tool-button" data-tool="tree" aria-pressed="false" aria-label="Tree">
           <svg viewBox="0 0 40 40" aria-hidden="true" focusable="false">
-            <path
-              d="M20 6L28 20L23 20L29 30L11 30L17 20L12 20Z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.6"
-              stroke-linejoin="round"
-            />
-            <path d="M20 30L20 35" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            <path d="M18 34L18 22L22 22L22 34Z" fill="#4a2f18" stroke="rgb(40 30 20 / 45%)" stroke-width="1" />
+            <circle cx="20" cy="14" r="9" fill="#2f6d3f" stroke="rgb(40 30 20 / 45%)" stroke-width="1.2" />
+            <circle cx="12" cy="18" r="6.5" fill="#3f8752" stroke="rgb(40 30 20 / 45%)" stroke-width="1.2" />
+            <circle cx="28" cy="18" r="6.5" fill="#20542f" stroke="rgb(40 30 20 / 45%)" stroke-width="1.2" />
           </svg>
         </button>
         <button type="button" class="tool-button" data-tool="water" aria-pressed="false" aria-label="Watering can">
           <svg viewBox="0 0 40 40" aria-hidden="true" focusable="false">
-            <rect x="6" y="17" width="21" height="15" rx="5" fill="none" stroke="currentColor" stroke-width="1.8" />
-            <path d="M11 17a5 6 0 0 1 10 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-            <path d="M24 20L34 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-            <circle cx="35" cy="11" r="1.8" fill="none" stroke="currentColor" stroke-width="1.4" />
+            <rect x="6" y="17" width="21" height="15" rx="5" fill="#5b8fa8" stroke="rgb(40 30 20 / 45%)" stroke-width="1.4" />
+            <path d="M11 17a5 6 0 0 1 10 0" fill="none" stroke="#6b4226" stroke-width="2.2" stroke-linecap="round" />
+            <path d="M24 20L34 12" stroke="#6b4226" stroke-width="2.2" stroke-linecap="round" />
+            <circle cx="35" cy="11" r="1.8" fill="#a8d4e8" stroke="rgb(40 30 20 / 45%)" stroke-width="1" />
+            <path d="M37 16Q38 18 37 20" fill="none" stroke="#a8d4e8" stroke-width="1.6" stroke-linecap="round" />
           </svg>
         </button>
         <button type="button" class="tool-button" data-tool="shovel" aria-pressed="false" aria-label="Shovel">
           <svg viewBox="0 0 40 40" aria-hidden="true" focusable="false">
-            <path d="M13 5a4 4 0 1 0 0 8" fill="none" stroke="currentColor" stroke-width="1.8" />
-            <line x1="13" y1="9" x2="24" y2="24" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            <line x1="13" y1="9" x2="24" y2="24" stroke="#6b4226" stroke-width="3.2" stroke-linecap="round" />
+            <path d="M13 5a4 4 0 1 0 0 8" fill="none" stroke="#6b4226" stroke-width="2.4" />
             <path
               d="M19 22L30 18L33 25L24 33C20 33 18 29 19 22Z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.6"
+              fill="#9aa0a6"
+              stroke="rgb(40 30 20 / 45%)"
+              stroke-width="1.4"
               stroke-linejoin="round"
             />
           </svg>

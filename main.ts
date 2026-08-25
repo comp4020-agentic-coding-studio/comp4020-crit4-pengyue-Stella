@@ -539,11 +539,23 @@ function flowerMarkup(rand: () => number): string {
   ];
   const leafBTip: [number, number] = [leafBBase[0] + 17 + rand() * 4, leafBBase[1] - 8 - rand() * 4];
   const center: [number, number] = [stemTip[0], stemTip[1] - 2];
+  // A few close pink tones instead of one flat fill, and a soft blush behind
+  // them, so the bloom reads as loosely hand-painted rather than a flat
+  // vector flower.
+  const petalColors = ["#ec4899", "#f472b6", "#e0559c"];
   const petals = [-18, 54, 126, 198, 270]
-    .map((a) => a + jitter(8, rand))
-    .map((a) => {
+    .map((a) => a + jitter(10, rand))
+    .map((a, i) => {
       const tip = fromBase(a, 13 + rand() * 2, center[0], center[1]);
-      return `<path data-phase="d" d="${leafPath(center[0], center[1], tip[0], tip[1], 6.5, rand)}" fill="#ec4899"/>`;
+      return `<path data-phase="d" d="${leafPath(center[0], center[1], tip[0], tip[1], 6.5, rand)}" fill="${petalColors[i % petalColors.length]}"/>`;
+    })
+    .join("");
+  // A few tiny stamens around the center instead of one flat dot.
+  const stamens = [-40, 40, 180]
+    .map((a) => a + jitter(20, rand))
+    .map((a) => {
+      const [sx, sy] = fromBase(a, 2.5 + rand(), center[0], center[1]);
+      return `<circle data-phase="d" cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="1.4" fill="#f5c542"/>`;
     })
     .join("");
 
@@ -553,8 +565,10 @@ function flowerMarkup(rand: () => number): string {
     <path data-phase="b" d="${leafPath(leafABase[0], leafABase[1], leafATip[0], leafATip[1], 8, rand)}" fill="#5ba24a"/>
     <path data-phase="b" d="${leafPath(leafBBase[0], leafBBase[1], leafBTip[0], leafBTip[1], 8, rand)}" fill="#4a8c3a"/>
     <circle data-phase="c" cx="${stemTip[0]}" cy="${stemTip[1] - 2}" r="6" fill="#d98aa3"/>
+    <circle data-phase="d" cx="${center[0]}" cy="${center[1]}" r="11" fill="rgb(244 114 182 / 25%)"/>
     ${petals}
     <circle data-phase="d" cx="${center[0]}" cy="${center[1]}" r="4.5" fill="#f5c542"/>
+    ${stamens}
   `;
 }
 
@@ -595,11 +609,23 @@ function grassMarkup(rand: () => number): string {
     [baseX - 8, baseY - 20],
     [baseX + 9, baseY - 20],
   ];
+  // Three greens instead of two, plus a few berry accents scattered across
+  // the blobs, so a mature bush reads as flowering/fruiting rather than a
+  // uniform mass of leaves.
+  const bushPalette = ["#5ba24a", "#4a8c3a", "#6bb85a"];
   const bushBlobs = bushCenters
     .map(
       ([cx, cy], i) =>
-        `<path data-phase="d" d="${blobPath(cx, cy, 12 - i * 0.3, 7, rand)}" fill="${i % 2 ? "#4a8c3a" : "#5ba24a"}"/>`,
+        `<path data-phase="d" d="${blobPath(cx, cy, 12 - i * 0.3, 7, rand)}" fill="${bushPalette[i % bushPalette.length]}"/>`,
     )
+    .join("");
+  const berries = bushCenters
+    .filter((_, i) => i % 3 === 0)
+    .map(([cx, cy]) => {
+      const bx = cx + jitter(5, rand);
+      const by = cy + jitter(5, rand);
+      return `<circle data-phase="d" cx="${bx.toFixed(1)}" cy="${by.toFixed(1)}" r="1.6" fill="#d9534f"/>`;
+    })
     .join("");
 
   return `
@@ -608,6 +634,7 @@ function grassMarkup(rand: () => number): string {
     ${earlyLeaves}
     ${twigs}
     ${bushBlobs}
+    ${berries}
   `;
 }
 
@@ -637,19 +664,42 @@ function treeMarkup(rand: () => number): string {
     [trunkTip[0] + 12, trunkTip[1] - 26],
     [trunkTip[0], trunkTip[1] - 34],
   ];
+  // Three greens (one a lighter highlight) instead of two, plus a scatter of
+  // small blossoms across the canopy for a friendlier, storybook tree.
+  const canopyPalette = ["#2f6d3f", "#20542f", "#3f8752"];
   const canopy = canopyCenters
     .map(
       ([cx, cy], i) =>
-        `<path data-phase="d" d="${blobPath(cx, cy, 16 - i * 0.8, 8, rand)}" fill="${i % 2 ? "#20542f" : "#2f6d3f"}"/>`,
+        `<path data-phase="d" d="${blobPath(cx, cy, 16 - i * 0.8, 8, rand)}" fill="${canopyPalette[i % canopyPalette.length]}"/>`,
     )
+    .join("");
+  const blossoms = canopyCenters
+    .filter((_, i) => i % 2 === 0)
+    .map(([cx, cy]) => {
+      const bx = cx + jitter(8, rand);
+      const by = cy + jitter(8, rand);
+      return `<circle data-phase="d" cx="${bx.toFixed(1)}" cy="${by.toFixed(1)}" r="1.8" fill="#f2a6c1"/>`;
+    })
+    .join("");
+  // A couple of short bark marks on the trunk --- <line>, not <path>, so the
+  // shared ink-outline rule (which targets ellipse/circle/path) doesn't
+  // thicken these past their own thin stroke.
+  const barkMarks = [0.35, 0.6]
+    .map((f) => {
+      const bx = baseX + (trunkTip[0] - baseX) * f + jitter(2, rand);
+      const by = baseY + (trunkTip[1] - baseY) * f;
+      return `<line data-phase="b" x1="${(bx - 1.5).toFixed(1)}" y1="${(by - 1).toFixed(1)}" x2="${(bx + 1.5).toFixed(1)}" y2="${(by + 1).toFixed(1)}" stroke="#2f1d0f" stroke-width="0.8" stroke-linecap="round"/>`;
+    })
     .join("");
 
   return `
     ${seedMarkup(5.5, 3.4, "#5a3a1e")}
     <path data-phase="a" data-grow-line="1" pathLength="1" d="${stemPath(baseX, baseY, trunkTip[0], trunkTip[1], stemBow)}" stroke="#4a2f18" stroke-width="2.2"/>
     <path data-phase="b" d="${trunkPath(baseX, baseY, trunkTip[0], trunkTip[1], 4.6, 1.6, rand)}" fill="#4a2f18"/>
+    ${barkMarks}
     ${branches}
     ${canopy}
+    ${blossoms}
   `;
 }
 
