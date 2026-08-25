@@ -441,6 +441,48 @@ function startDrone(plant: Plant): void {
   sustainedQueue.push(plant);
 }
 
+// --- Mushroom's ambient pulse: an event-based alternative to the drone ----
+//
+// Mushroom has no drone (see SpeciesProfile.drone above), so a mature
+// mushroom would otherwise fall silent forever. Instead it keeps knocking:
+// a sparse, slightly irregular one-shot per plant, quieter than its own
+// stage/water voice so it sits under the mix rather than repeating an
+// accent at full volume every few seconds. Watering briefly densifies the
+// pattern instead of reviving a drone that was never there.
+
+const MUSHROOM_PULSE_MIN_MS = 1800;
+const MUSHROOM_PULSE_RANGE_MS = 2600; // baseline: a knock every 1.8-4.4s
+const MUSHROOM_PULSE_BOOST_MIN_MS = 300;
+const MUSHROOM_PULSE_BOOST_RANGE_MS = 500; // boosted: a knock every 0.3-0.8s
+const MUSHROOM_PULSE_BOOST_DURATION_MS = 3000;
+
+/** A quieter, slightly velocity-varied strike than mushroom's own stage/
+ * water voice --- these repeat forever once mature, so restraint matters
+ * more here than for a one-off accent. */
+function mushroomPulseTimbre(base: Timbre): Timbre {
+  return { ...base, gain: base.gain * (0.3 + Math.random() * 0.2) };
+}
+
+function scheduleNextMushroomPulse(plant: Plant, now: number): void {
+  const boosted = plant.pulseBoostUntil !== undefined && now < plant.pulseBoostUntil;
+  const min = boosted ? MUSHROOM_PULSE_BOOST_MIN_MS : MUSHROOM_PULSE_MIN_MS;
+  const range = boosted ? MUSHROOM_PULSE_BOOST_RANGE_MS : MUSHROOM_PULSE_RANGE_MS;
+  plant.nextPulseAt = now + min + Math.random() * range;
+}
+
+/** Called every frame for every already-matured plant; a no-op for every
+ * species but mushroom. */
+function updateMushroomPulse(plant: Plant, now: number): void {
+  if (plant.species !== "mushroom") return;
+  if (plant.nextPulseAt === undefined || now < plant.nextPulseAt) {
+    if (plant.nextPulseAt === undefined) scheduleNextMushroomPulse(plant, now);
+    return;
+  }
+  const profile = SPECIES_PROFILES[plant.species];
+  playVoice(plant.pitch, mushroomPulseTimbre(profile.timbre));
+  scheduleNextMushroomPulse(plant, now);
+}
+
 // --- Doodle art: hand-drawn, multi-phase plant markup ---------------------
 //
 // A plant's growth is a small SVG tree of parts, not one shape scaling up.
@@ -837,6 +879,10 @@ interface Plant {
   matured: boolean;
   drone?: Drone;
   lastWateredAt: number;
+  // Mushroom-only ambient pulse scheduling (see updateMushroomPulse) ---
+  // always undefined for every other species.
+  nextPulseAt?: number;
+  pulseBoostUntil?: number;
 }
 
 const plants: Plant[] = [];
@@ -915,9 +961,13 @@ function waterPlant(plant: Plant, now: number): void {
     brightenDrone(plant.drone);
   } else if (plant.matured && profile.drone) {
     // Its drone was evicted under the voice cap --- watering revives it,
-    // still subject to that same cap. A droneless species (mushroom) has
-    // no drone to revive --- the one-shot chime above is its whole reaction.
+    // still subject to that same cap.
     startDrone(plant);
+  } else if (plant.species === "mushroom" && plant.matured) {
+    // No drone to revive --- briefly densify its ambient pulse instead, and
+    // pull the next knock in sooner so the boost is heard right away.
+    plant.pulseBoostUntil = now + MUSHROOM_PULSE_BOOST_DURATION_MS;
+    scheduleNextMushroomPulse(plant, now);
   }
 }
 
@@ -1164,14 +1214,17 @@ for (const button of document.querySelectorAll<HTMLButtonElement>(".tool-button"
  * blends its visual smoothly toward maturity along its own species' growth
  * curve, and fires a short musical event exactly once at each growth stage
  * it newly reaches. On reaching maturity a plant starts its sustained drone
- * (bounded by the voice cap in startDrone) and is then skipped here
- * entirely --- its visual is settled and its ongoing sound lives in the
- * audio graph, not in this loop. */
+ * (bounded by the voice cap in startDrone, for species that have one) and
+ * its visual is then settled --- a matured plant is only still checked here
+ * for its ambient pulse (mushroom only; a no-op for every other species). */
 function updatePlants(): void {
   const now = performance.now();
 
   for (const plant of plants) {
-    if (plant.matured) continue;
+    if (plant.matured) {
+      updateMushroomPulse(plant, now);
+      continue;
+    }
 
     const profile = SPECIES_PROFILES[plant.species];
     const elapsed = now - plant.plantedAt;
