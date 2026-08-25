@@ -1,6 +1,6 @@
-// Step 1 (see PLAN.md): tone engine + scale lock. No garden UI yet --- this
-// proves the audio plumbing (context, scale, Voice primitive) works before
-// any planting logic exists. Click/tap anywhere to hear a test tone.
+// Steps 1-2 (see PLAN.md): tone engine + scale lock, then tap soil to plant a
+// seed. One species, bare visual --- growth stages, watering and multiple
+// species are later steps.
 
 let audioContext: AudioContext | null = null;
 
@@ -100,8 +100,34 @@ export function playVoice(pitch: number, timbre: Timbre = DEFAULT_TIMBRE): void 
   });
 }
 
-// Manual test harness for step 1 --- de-risks the plumbing before any garden
-// logic exists. Replaced by real planting in step 2.
-document.addEventListener("pointerdown", (event) => {
-  playVoice(xToPitch(event.clientX / window.innerWidth));
-});
+// --- Garden: tap soil to plant a seed -------------------------------------
+
+interface Plant {
+  x: number;
+  y: number;
+  pitch: number;
+  dot: HTMLDivElement;
+}
+
+const plants: Plant[] = [];
+
+function plantSeed(garden: HTMLElement, x: number, y: number): void {
+  const pitch = xToPitch(x / garden.clientWidth);
+  playVoice(pitch);
+
+  const dot = document.createElement("div");
+  dot.className = "seed";
+  dot.style.left = `${x}px`;
+  dot.style.top = `${y}px`;
+  garden.appendChild(dot);
+
+  plants.push({ x, y, pitch, dot });
+}
+
+const garden = document.querySelector<HTMLElement>("#garden");
+if (garden) {
+  garden.addEventListener("pointerdown", (event) => {
+    const rect = garden.getBoundingClientRect();
+    plantSeed(garden, event.clientX - rect.left, event.clientY - rect.top);
+  });
+}

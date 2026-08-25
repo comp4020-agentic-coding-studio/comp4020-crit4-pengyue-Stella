@@ -1,16 +1,62 @@
+html,
+body {
+  height: 100%;
+}
+
 body {
   margin: 0;
-  padding: 2rem;
+  display: flex;
+  flex-direction: column;
   font-family: system-ui, sans-serif;
   line-height: 1.6;
   color: #1a1a1a;
 }
 
-main {
-  max-width: 40rem;
-  margin: 0 auto;
+header {
+  padding: 0.5rem 1rem;
 }
 
 a {
   color: #0b5fff;
+}
+
+main {
+  flex: 1;
+  display: flex;
+}
+
+#garden {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, #6b4423 0%, #3f2712 100%);
+  touch-action: none;
+  cursor: pointer;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.seed {
+  position: absolute;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #d9f99d, #65a30d);
+  box-shadow: 0 0 0.75rem rgb(190 242 100 / 70%);
+  transform: translate(-50%, -50%) scale(0);
+  animation: seed-pop 0.3s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes seed-pop {
+  to {
+    transform: translate(-50%, -50%) scale(1);
+  }
 }

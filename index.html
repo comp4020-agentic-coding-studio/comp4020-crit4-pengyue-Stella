@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>COMP4020 prototype</title>
+    <title>Sound Garden</title>
     <meta
       name="description"
-      content="Replace this with one sentence saying what this page is. A search result and a link preview both show it."
+      content="A tiny musical instrument: tap the soil to plant sounds on a scale that can't play a wrong note."
     />
 
     <!--
@@ -27,11 +27,12 @@
       </nav>
     </header>
     <main>
-      <h1>COMP4020 prototype</h1>
-      <p data-testid="intro">
-        Replace this with your prototype. This week's brief is on the course website;
-        <code>spec/README.md</code> explains how the checks in this repo relate to it.
-      </p>
+      <h1 class="visually-hidden">Sound Garden</h1>
+      <div
+        id="garden"
+        data-testid="garden"
+        aria-label="Garden soil --- tap or click anywhere to plant a sound"
+      ></div>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>
