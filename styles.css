@@ -43,19 +43,75 @@ main {
   white-space: nowrap;
 }
 
-.seed {
-  --seed-size: 0.4rem;
-  --seed-color: rgb(77 51 25);
-  --seed-glow: 0.05rem;
+/* Shape-agnostic positioning base --- each species paints its own look on
+   top of these custom props, so growth (main.ts) only ever needs to set
+   size/color/glow, never know which species it's animating. */
+.plant-dot {
+  --plant-size: 0.4rem;
+  --plant-color: rgb(77 51 25);
+  --plant-glow: 0.05rem;
 
   position: absolute;
-  width: var(--seed-size);
-  height: var(--seed-size);
-  border-radius: 50%;
-  background-color: var(--seed-color);
-  box-shadow: 0 0 var(--seed-glow) var(--seed-color);
+  width: var(--plant-size);
+  height: var(--plant-size);
   transform: translate(-50%, -50%);
   pointer-events: none;
+}
+
+/* A simple 5-blob bloom: the center circle plus four copies offset in
+   lengths (not percentages) so the whole cluster rescales continuously as
+   --plant-size grows. */
+.plant-flower {
+  border-radius: 50%;
+  background-color: var(--plant-color);
+  box-shadow:
+    0 0 var(--plant-glow) var(--plant-color),
+    calc(var(--plant-size) * 0.85) 0 0 calc(var(--plant-size) * -0.15) var(--plant-color),
+    calc(var(--plant-size) * -0.85) 0 0 calc(var(--plant-size) * -0.15) var(--plant-color),
+    0 calc(var(--plant-size) * 0.85) 0 calc(var(--plant-size) * -0.15) var(--plant-color),
+    0 calc(var(--plant-size) * -0.85) 0 calc(var(--plant-size) * -0.15) var(--plant-color);
+}
+
+/* A blade, not a dot: the same circle squashed thin and tall, gently
+   swaying. Every keyframe restates the full transform --- an animated
+   transform fully overrides the static one, so a keyframe missing the
+   translate would jump the blade off-center. */
+.plant-grass {
+  border-radius: 50%;
+  background-color: var(--plant-color);
+  box-shadow: 0 0 var(--plant-glow) var(--plant-color);
+  transform: translate(-50%, -50%) scale(0.55, 2);
+  animation: plant-grass-sway 2.6s ease-in-out infinite;
+}
+
+@keyframes plant-grass-sway {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(0.55, 2) rotate(-4deg);
+  }
+
+  50% {
+    transform: translate(-50%, -50%) scale(0.55, 2) rotate(4deg);
+  }
+}
+
+/* An irregular canopy blob with a trunk anchored to its bottom-center, sized
+   off --plant-size so the trunk scales in naturally as the tree grows. */
+.plant-tree {
+  border-radius: 42% 58% 55% 45% / 55% 45% 58% 42%;
+  background-color: var(--plant-color);
+  box-shadow: 0 0 var(--plant-glow) var(--plant-color);
+}
+
+.plant-tree::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: calc(var(--plant-size) * 0.22);
+  height: calc(var(--plant-size) * 0.5);
+  background-color: rgb(61 41 20);
+  transform: translateX(-50%);
 }
 
 /* A quiet hint that dragging waters --- decorative only, so it sits above

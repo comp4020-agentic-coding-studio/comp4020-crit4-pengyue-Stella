@@ -1,8 +1,10 @@
-// Steps 1-3 (see PLAN.md): tone engine + scale lock, tap soil to plant a
-// seed, then a permanent seed -> sprout -> mature growth. Mature plants keep
-// a quiet, evolving sustained layer (bounded by a voice cap) rather than
-// going silent. One species --- watering and multiple species are later
-// steps.
+// Steps 1-5 (see PLAN.md): tone engine + scale lock, tap soil to plant a
+// seed, a permanent seed -> sprout -> mature growth, a quiet evolving
+// sustained layer once mature (bounded by a voice cap) instead of going
+// silent, dragging through the garden to water, and three plant species ---
+// flower, grass, tree --- assigned by tap order (1-2-3-1-2-3...) rather than
+// any menu, differing only in the parameters fed into this one shared
+// Voice/growth/drone machinery.
 
 let audioContext: AudioContext | null = null;
 
@@ -49,7 +51,8 @@ export function xToPitch(x: number): number {
   return 440 * 2 ** ((midi - 69) / 12);
 }
 
-/** Per-species sound shape --- later plant types differ only in these values. */
+/** Per-species sound shape --- species differ only in these values, never in
+ * a separate synthesis path. */
 export interface Timbre {
   waveform: OscillatorType;
   filterFrequency: number;
@@ -70,9 +73,9 @@ const DEFAULT_TIMBRE: Timbre = {
  * The one Voice primitive: oscillator -> filter -> envelope -> master gain,
  * auto-disconnected once the envelope finishes. A single short, self-
  * contained musical event --- planting, each growth-stage transition, and
- * later watering all reuse this by passing a different pitch/timbre. Nothing
- * here ever holds an oscillator open longer than its own attack + release,
- * so a garden full of permanent, mature plants costs nothing to sustain.
+ * watering all reuse this by passing a different pitch/timbre. Nothing here
+ * ever holds an oscillator open longer than its own attack + release, so a
+ * garden full of permanent, mature plants costs nothing to sustain.
  */
 export function playVoice(pitch: number, timbre: Timbre = DEFAULT_TIMBRE): void {
   const context = getAudioContext();
@@ -108,28 +111,6 @@ export function playVoice(pitch: number, timbre: Timbre = DEFAULT_TIMBRE): void 
 
 type Stage = "seed" | "sprout" | "mature";
 
-/** A subtler/brighter voice per stage --- one plant type, three moments. */
-function timbreForStage(stage: Stage): Timbre {
-  switch (stage) {
-    case "seed":
-      return {
-        ...DEFAULT_TIMBRE,
-        gain: DEFAULT_TIMBRE.gain * 0.35,
-        filterFrequency: DEFAULT_TIMBRE.filterFrequency * 0.3,
-        release: 0.25,
-      };
-    case "sprout":
-      return {
-        ...DEFAULT_TIMBRE,
-        gain: DEFAULT_TIMBRE.gain * 0.65,
-        filterFrequency: DEFAULT_TIMBRE.filterFrequency * 0.6,
-        release: 0.35,
-      };
-    case "mature":
-      return DEFAULT_TIMBRE;
-  }
-}
-
 interface GrowthStop {
   stage: Stage;
   at: number; // ms since planting
@@ -138,16 +119,106 @@ interface GrowthStop {
   glow: number; // rem
 }
 
-// Waypoints the visual blends continuously through --- not three snapshots
-// swapped between, but a single eased curve that happens to pass through
-// each of these on its way to a permanent, mature look.
-const GROWTH_STOPS: GrowthStop[] = [
-  { stage: "seed", at: 0, size: 0.4, color: [77, 51, 25], glow: 0.05 },
-  { stage: "sprout", at: 500, size: 0.9, color: [134, 163, 60], glow: 0.3 },
-  { stage: "mature", at: 2000, size: 1.4, color: [74, 222, 128], glow: 0.6 },
-];
+// --- Species: three plant types sharing one Voice/growth/drone machinery --
+//
+// A species is nothing but a bundle of parameters --- its own timbre, octave,
+// growth curve, and drone character --- fed into the same functions every
+// other species uses. Assigned by tap order (1-2-3-1-2-3...), never randomly
+// and never through any menu: variety with zero new interface surface.
 
-const MATURE_AT_MS = GROWTH_STOPS[GROWTH_STOPS.length - 1].at;
+type Species = "flower" | "grass" | "tree";
+
+const SPECIES_ORDER: Species[] = ["flower", "grass", "tree"];
+let nextSpeciesIndex = 0;
+
+function nextSpecies(): Species {
+  const species = SPECIES_ORDER[nextSpeciesIndex % SPECIES_ORDER.length];
+  nextSpeciesIndex++;
+  return species;
+}
+
+interface DroneProfile {
+  lfoRateMin: number;
+  lfoRateRange: number;
+  lfoDepthMultiplier: number; // of the species' filterFrequency
+  gain: number;
+}
+
+interface SpeciesProfile {
+  timbre: Timbre;
+  // Octave shift only --- must stay a power of 2, or a species would drift
+  // off the pentatonic lock that xToPitch guarantees everyone else.
+  registerMultiplier: number;
+  growth: GrowthStop[];
+  drone: DroneProfile;
+}
+
+const SPECIES_PROFILES: Record<Species, SpeciesProfile> = {
+  flower: {
+    timbre: { waveform: "triangle", filterFrequency: 3200, attack: 0.008, release: 0.3, gain: 0.24 },
+    registerMultiplier: 2,
+    growth: [
+      { stage: "seed", at: 0, size: 0.35, color: [168, 107, 60], glow: 0.06 },
+      { stage: "sprout", at: 250, size: 0.85, color: [214, 138, 120], glow: 0.35 },
+      { stage: "mature", at: 1100, size: 1.3, color: [236, 72, 153], glow: 0.75 },
+    ],
+    drone: { lfoRateMin: 0.2, lfoRateRange: 0.3, lfoDepthMultiplier: 0.2, gain: 0.045 },
+  },
+  // The anchor species: identical numbers to the single-species baseline
+  // this replaced, so nothing about the original feel moves.
+  grass: {
+    timbre: DEFAULT_TIMBRE,
+    registerMultiplier: 1,
+    growth: [
+      { stage: "seed", at: 0, size: 0.4, color: [77, 51, 25], glow: 0.05 },
+      { stage: "sprout", at: 500, size: 0.9, color: [134, 163, 60], glow: 0.3 },
+      { stage: "mature", at: 2000, size: 1.4, color: [74, 222, 128], glow: 0.6 },
+    ],
+    drone: { lfoRateMin: 0.1, lfoRateRange: 0.15, lfoDepthMultiplier: 0.15, gain: 0.05 },
+  },
+  tree: {
+    timbre: { waveform: "sawtooth", filterFrequency: 750, attack: 0.06, release: 0.9, gain: 0.32 },
+    registerMultiplier: 0.5,
+    growth: [
+      { stage: "seed", at: 0, size: 0.45, color: [61, 41, 20], glow: 0.05 },
+      { stage: "sprout", at: 900, size: 1.0, color: [93, 107, 58], glow: 0.35 },
+      { stage: "mature", at: 3200, size: 1.6, color: [32, 84, 52], glow: 0.5 },
+    ],
+    drone: { lfoRateMin: 0.04, lfoRateRange: 0.06, lfoDepthMultiplier: 0.1, gain: 0.06 },
+  },
+};
+
+// Ratios shared by every species, applied to each one's own base numbers ---
+// kept flat rather than per-species so they don't compound with an already
+// quiet/dark profile like tree's and make its drone swell inaudible.
+const DRONE_FILTER_MULTIPLIER = 0.5;
+const WATER_BRIGHTEN_FILTER_MULTIPLIER = 0.9;
+const WATER_BRIGHTEN_GAIN_MULTIPLIER = 2.5;
+
+/** A subtler/brighter voice per stage --- one plant, three moments, on top
+ * of whatever base timbre its species contributes. */
+function timbreForStage(stage: Stage, base: Timbre): Timbre {
+  switch (stage) {
+    case "seed":
+      return { ...base, gain: base.gain * 0.35, filterFrequency: base.filterFrequency * 0.3, release: 0.25 };
+    case "sprout":
+      return { ...base, gain: base.gain * 0.65, filterFrequency: base.filterFrequency * 0.6, release: 0.35 };
+    case "mature":
+      return base;
+  }
+}
+
+/** The watering chime's timbre, brighter and quieter than the species' own
+ * voice --- so it reads as an outside touch, not another growth blip. */
+function waterTimbre(base: Timbre): Timbre {
+  return {
+    ...base,
+    filterFrequency: base.filterFrequency * 1.4,
+    gain: base.gain * 0.5,
+    attack: 0.005,
+    release: 0.18,
+  };
+}
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
@@ -171,22 +242,27 @@ interface GrowthFrame {
   glow: number;
 }
 
+function matureAt(stops: GrowthStop[]): number {
+  return stops[stops.length - 1].at;
+}
+
 /** Which stage a plant has reached, given its age --- the discrete moments
  * that trigger a blip, decoupled from the continuous visual below. */
-function stageAt(elapsedMs: number): Stage {
-  let current = GROWTH_STOPS[0].stage;
-  for (const stop of GROWTH_STOPS) {
+function stageAt(elapsedMs: number, stops: GrowthStop[]): Stage {
+  let current = stops[0].stage;
+  for (const stop of stops) {
     if (elapsedMs >= stop.at) current = stop.stage;
   }
   return current;
 }
 
-/** Continuous seed -> sprout -> mature growth, eased between waypoints ---
- * a smooth blend the whole way, not a snap between three fixed looks. */
-function growthFrameAt(elapsedMs: number): GrowthFrame {
-  for (let i = 0; i < GROWTH_STOPS.length - 1; i++) {
-    const from = GROWTH_STOPS[i];
-    const to = GROWTH_STOPS[i + 1];
+/** Continuous seed -> sprout -> mature growth, eased between a species' own
+ * waypoints --- a smooth blend the whole way, not a snap between three fixed
+ * looks. */
+function growthFrameAt(elapsedMs: number, stops: GrowthStop[]): GrowthFrame {
+  for (let i = 0; i < stops.length - 1; i++) {
+    const from = stops[i];
+    const to = stops[i + 1];
     if (elapsedMs < to.at) {
       const t = (elapsedMs - from.at) / (to.at - from.at);
       const eased = t * t * (3 - 2 * t); // smoothstep
@@ -197,14 +273,14 @@ function growthFrameAt(elapsedMs: number): GrowthFrame {
       };
     }
   }
-  const mature = GROWTH_STOPS[GROWTH_STOPS.length - 1];
+  const mature = stops[stops.length - 1];
   return { size: mature.size, color: formatColor(mature.color), glow: mature.glow };
 }
 
 function applyGrowthFrame(dot: HTMLDivElement, frame: GrowthFrame): void {
-  dot.style.setProperty("--seed-size", `${frame.size}rem`);
-  dot.style.setProperty("--seed-color", frame.color);
-  dot.style.setProperty("--seed-glow", `${frame.glow}rem`);
+  dot.style.setProperty("--plant-size", `${frame.size}rem`);
+  dot.style.setProperty("--plant-color", frame.color);
+  dot.style.setProperty("--plant-glow", `${frame.glow}rem`);
 }
 
 // --- Sustained layer: mature plants keep quietly singing ------------------
@@ -215,10 +291,9 @@ function applyGrowthFrame(dot: HTMLDivElement, frame: GrowthFrame): void {
 // Bounded by MAX_SUSTAINED_VOICES --- the central update loop below is the
 // one place that enforces the cap, reclaiming the oldest sustained voice
 // (a short fade-out, not a hard cut) rather than ever letting the layer
-// grow unbounded as the garden fills up.
+// grow unbounded as the garden fills up. One shared cap across all species.
 
 const MAX_SUSTAINED_VOICES = 8;
-const SUSTAIN_GAIN = 0.05;
 const SUSTAIN_ATTACK_S = 1.5;
 const SUSTAIN_RELEASE_S = 1.2;
 
@@ -227,6 +302,12 @@ interface Drone {
   lfo: OscillatorNode;
   filter: BiquadFilterNode;
   gain: GainNode;
+  // Precomputed once from the plant's species profile, so brightenDrone
+  // never needs to look a species up --- it just reads these back.
+  restGain: number;
+  restFilterFrequency: number;
+  brightenGain: number;
+  brightenFilterFrequency: number;
 }
 
 const sustainedQueue: Plant[] = [];
@@ -260,30 +341,33 @@ function startDrone(plant: Plant): void {
     if (oldest) stopDrone(oldest);
   }
 
+  const profile = SPECIES_PROFILES[plant.species];
   const context = getAudioContext();
   const now = context.currentTime;
 
   const oscillator = context.createOscillator();
-  oscillator.type = DEFAULT_TIMBRE.waveform;
+  oscillator.type = profile.timbre.waveform;
   oscillator.frequency.value = plant.pitch;
 
+  const restFilterFrequency = profile.timbre.filterFrequency * DRONE_FILTER_MULTIPLIER;
   const filter = context.createBiquadFilter();
   filter.type = "lowpass";
-  filter.frequency.value = DEFAULT_TIMBRE.filterFrequency * 0.5;
+  filter.frequency.value = restFilterFrequency;
 
   // A slow, desynced LFO per plant so a garden full of drones doesn't pulse
   // in lockstep --- each one wobbles at its own gentle, unrelated pace.
   const lfo = context.createOscillator();
   lfo.type = "sine";
-  lfo.frequency.value = 0.1 + Math.random() * 0.15;
+  lfo.frequency.value = profile.drone.lfoRateMin + Math.random() * profile.drone.lfoRateRange;
   const lfoGain = context.createGain();
-  lfoGain.gain.value = DEFAULT_TIMBRE.filterFrequency * 0.15;
+  lfoGain.gain.value = profile.timbre.filterFrequency * profile.drone.lfoDepthMultiplier;
   lfo.connect(lfoGain);
   lfoGain.connect(filter.frequency);
 
+  const restGain = profile.drone.gain;
   const gain = context.createGain();
   gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(SUSTAIN_GAIN, now + SUSTAIN_ATTACK_S);
+  gain.gain.linearRampToValueAtTime(restGain, now + SUSTAIN_ATTACK_S);
 
   oscillator.connect(filter);
   filter.connect(gain);
@@ -292,7 +376,16 @@ function startDrone(plant: Plant): void {
   oscillator.start(now);
   lfo.start(now);
 
-  plant.drone = { oscillator, lfo, filter, gain };
+  plant.drone = {
+    oscillator,
+    lfo,
+    filter,
+    gain,
+    restGain,
+    restFilterFrequency,
+    brightenGain: restGain * WATER_BRIGHTEN_GAIN_MULTIPLIER,
+    brightenFilterFrequency: profile.timbre.filterFrequency * WATER_BRIGHTEN_FILTER_MULTIPLIER,
+  };
   sustainedQueue.push(plant);
 }
 
@@ -302,6 +395,7 @@ interface Plant {
   x: number;
   y: number;
   pitch: number;
+  species: Species;
   dot: HTMLDivElement;
   plantedAt: number;
   stage: Stage;
@@ -313,20 +407,23 @@ interface Plant {
 const plants: Plant[] = [];
 
 function plantSeed(garden: HTMLElement, x: number, y: number): void {
-  const pitch = xToPitch(x / garden.clientWidth);
-  playVoice(pitch, timbreForStage("seed"));
+  const species = nextSpecies();
+  const profile = SPECIES_PROFILES[species];
+  const pitch = xToPitch(x / garden.clientWidth) * profile.registerMultiplier;
+  playVoice(pitch, timbreForStage("seed", profile.timbre));
 
   const dot = document.createElement("div");
-  dot.className = "seed";
+  dot.className = `plant-dot plant-${species}`;
   dot.style.left = `${x}px`;
   dot.style.top = `${y}px`;
-  applyGrowthFrame(dot, growthFrameAt(0));
+  applyGrowthFrame(dot, growthFrameAt(0, profile.growth));
   garden.appendChild(dot);
 
   plants.push({
     x,
     y,
     pitch,
+    species,
     dot,
     plantedAt: performance.now(),
     stage: "seed",
@@ -347,22 +444,13 @@ function plantSeed(garden: HTMLElement, x: number, y: number): void {
 const WATER_HIT_RADIUS_PX = 22;
 const WATER_COOLDOWN_MS = 350;
 
-const WATER_TIMBRE: Timbre = {
-  ...DEFAULT_TIMBRE,
-  filterFrequency: DEFAULT_TIMBRE.filterFrequency * 1.4,
-  gain: DEFAULT_TIMBRE.gain * 0.5,
-  attack: 0.005,
-  release: 0.18,
-};
-
-const WATER_BRIGHTEN_GAIN = SUSTAIN_GAIN * 2.5;
-const WATER_BRIGHTEN_HZ = DEFAULT_TIMBRE.filterFrequency * 0.9;
 const WATER_BRIGHTEN_SWELL_S = 0.15;
 const WATER_BRIGHTEN_SETTLE_S = 0.9;
 
 /** Briefly swells a mature plant's already-playing drone, then lets it
- * settle back to its normal sustain level --- the LFO keeps wobbling the
- * filter on top of this the whole time, so it never sounds stuck. */
+ * settle back to its own species' normal sustain level --- the LFO keeps
+ * wobbling the filter on top of this the whole time, so it never sounds
+ * stuck. */
 function brightenDrone(drone: Drone): void {
   const context = getAudioContext();
   const now = context.currentTime;
@@ -370,22 +458,23 @@ function brightenDrone(drone: Drone): void {
   const gain = drone.gain.gain;
   gain.cancelScheduledValues(now);
   gain.setValueAtTime(gain.value, now);
-  gain.linearRampToValueAtTime(WATER_BRIGHTEN_GAIN, now + WATER_BRIGHTEN_SWELL_S);
-  gain.linearRampToValueAtTime(SUSTAIN_GAIN, now + WATER_BRIGHTEN_SWELL_S + WATER_BRIGHTEN_SETTLE_S);
+  gain.linearRampToValueAtTime(drone.brightenGain, now + WATER_BRIGHTEN_SWELL_S);
+  gain.linearRampToValueAtTime(drone.restGain, now + WATER_BRIGHTEN_SWELL_S + WATER_BRIGHTEN_SETTLE_S);
 
   const freq = drone.filter.frequency;
   freq.cancelScheduledValues(now);
   freq.setValueAtTime(freq.value, now);
-  freq.linearRampToValueAtTime(WATER_BRIGHTEN_HZ, now + WATER_BRIGHTEN_SWELL_S);
+  freq.linearRampToValueAtTime(drone.brightenFilterFrequency, now + WATER_BRIGHTEN_SWELL_S);
   freq.linearRampToValueAtTime(
-    DEFAULT_TIMBRE.filterFrequency * 0.5,
+    drone.restFilterFrequency,
     now + WATER_BRIGHTEN_SWELL_S + WATER_BRIGHTEN_SETTLE_S,
   );
 }
 
 function waterPlant(plant: Plant, now: number): void {
   plant.lastWateredAt = now;
-  playVoice(plant.pitch, WATER_TIMBRE);
+  const profile = SPECIES_PROFILES[plant.species];
+  playVoice(plant.pitch, waterTimbre(profile.timbre));
 
   if (plant.drone) {
     brightenDrone(plant.drone);
@@ -527,28 +616,30 @@ function stopWaterSound(water: WaterSound): void {
 }
 
 /** The one central update loop: walks every still-growing plant each frame,
- * blends its visual smoothly toward maturity, and fires a short musical
- * event exactly once at each growth stage it newly reaches. On reaching
- * maturity a plant starts its sustained drone (bounded by the voice cap in
- * startDrone) and is then skipped here entirely --- its visual is settled
- * and its ongoing sound lives in the audio graph, not in this loop. */
+ * blends its visual smoothly toward maturity along its own species' growth
+ * curve, and fires a short musical event exactly once at each growth stage
+ * it newly reaches. On reaching maturity a plant starts its sustained drone
+ * (bounded by the voice cap in startDrone) and is then skipped here
+ * entirely --- its visual is settled and its ongoing sound lives in the
+ * audio graph, not in this loop. */
 function updatePlants(): void {
   const now = performance.now();
 
   for (const plant of plants) {
     if (plant.matured) continue;
 
+    const profile = SPECIES_PROFILES[plant.species];
     const elapsed = now - plant.plantedAt;
 
-    const stage = stageAt(elapsed);
+    const stage = stageAt(elapsed, profile.growth);
     if (stage !== plant.stage) {
       plant.stage = stage;
-      playVoice(plant.pitch, timbreForStage(stage));
+      playVoice(plant.pitch, timbreForStage(stage, profile.timbre));
     }
 
-    applyGrowthFrame(plant.dot, growthFrameAt(elapsed));
+    applyGrowthFrame(plant.dot, growthFrameAt(elapsed, profile.growth));
 
-    if (elapsed >= MATURE_AT_MS) {
+    if (elapsed >= matureAt(profile.growth)) {
       plant.matured = true;
       startDrone(plant);
     }
