@@ -57,3 +57,82 @@ main {
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
+
+/* A quiet hint that dragging waters --- decorative only, so it sits above
+   the soil without ever intercepting the pointer gestures it's hinting at. */
+.watering-cue {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  color: rgb(198 230 250 / 55%);
+  pointer-events: none;
+  animation: watering-cue-bob 3.2s ease-in-out infinite;
+}
+
+.watering-cue-drop {
+  opacity: 0;
+  animation: watering-cue-drop-fall 2.4s ease-in infinite;
+}
+
+.watering-cue-drop-b {
+  animation-delay: 0.7s;
+}
+
+@keyframes watering-cue-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes watering-cue-drop-fall {
+  0% {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+
+  15% {
+    opacity: 1;
+  }
+
+  70% {
+    opacity: 0.7;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* One droplet per step of an actual watering drag --- a short-lived visual
+   echo of the gesture, unrelated to the audio graph in main.ts. */
+.water-droplet {
+  --droplet-size: 0.35rem;
+
+  position: absolute;
+  width: var(--droplet-size);
+  height: var(--droplet-size);
+  background: rgb(198 230 250 / 80%);
+  border-radius: 50% 50% 50% 0;
+  box-shadow: 0 0 0.2rem rgb(198 230 250 / 50%);
+  transform: translate(-50%, -50%) rotate(45deg);
+  pointer-events: none;
+  animation: water-droplet-fall 0.55s ease-out forwards;
+}
+
+@keyframes water-droplet-fall {
+  0% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) rotate(45deg) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 0.6rem)) rotate(45deg) scale(0.6);
+  }
+}

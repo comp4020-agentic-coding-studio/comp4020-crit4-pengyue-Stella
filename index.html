@@ -31,8 +31,56 @@
       <div
         id="garden"
         data-testid="garden"
-        aria-label="Garden soil --- tap or click anywhere to plant a sound"
-      ></div>
+        aria-label="Garden soil --- tap to plant a sound, drag to water"
+      >
+        <svg
+          class="watering-cue"
+          aria-hidden="true"
+          focusable="false"
+          viewBox="0 0 40 40"
+          width="34"
+          height="34"
+        >
+          <rect
+            x="6"
+            y="17"
+            width="21"
+            height="15"
+            rx="5"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+          />
+          <path
+            d="M11 17a5 6 0 0 1 10 0"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+          />
+          <path
+            d="M24 20 L34 12"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+          />
+          <circle cx="35" cy="11" r="1.8" fill="none" stroke="currentColor" stroke-width="1.4" />
+          <circle
+            class="watering-cue-drop watering-cue-drop-a"
+            cx="33"
+            cy="17"
+            r="1.1"
+            fill="currentColor"
+          />
+          <circle
+            class="watering-cue-drop watering-cue-drop-b"
+            cx="30"
+            cy="22"
+            r="0.9"
+            fill="currentColor"
+          />
+        </svg>
+      </div>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>

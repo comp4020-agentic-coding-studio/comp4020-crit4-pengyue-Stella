@@ -424,6 +424,20 @@ function waterPlantsAlong(x1: number, y1: number, x2: number, y2: number, now: n
   }
 }
 
+// A drag's visual trail: one CSS-animated droplet dropped every so often
+// along the path, purely decorative and removed once its own fall animation
+// ends --- nothing here touches the audio graph above.
+const DROPLET_SPACING_PX = 14;
+
+function spawnDroplet(garden: HTMLElement, x: number, y: number): void {
+  const droplet = document.createElement("div");
+  droplet.className = "water-droplet";
+  droplet.style.left = `${x}px`;
+  droplet.style.top = `${y}px`;
+  droplet.addEventListener("animationend", () => droplet.remove());
+  garden.appendChild(droplet);
+}
+
 let noiseBuffer: AudioBuffer | null = null;
 
 /** A shared, lazily-built noise buffer --- generated once, looped by every
@@ -562,6 +576,8 @@ interface DragState {
   smoothedSpeed: number;
   watering: boolean;
   water?: WaterSound;
+  lastDropletX: number;
+  lastDropletY: number;
 }
 
 let drag: DragState | null = null;
@@ -584,6 +600,8 @@ if (garden) {
       lastMoveAt: performance.now(),
       smoothedSpeed: 0,
       watering: false,
+      lastDropletX: x,
+      lastDropletY: y,
     };
     garden.setPointerCapture(event.pointerId);
   });
@@ -609,6 +627,12 @@ if (garden) {
 
     if (drag.water) updateWaterSound(drag.water, drag.smoothedSpeed);
     waterPlantsAlong(drag.lastX, drag.lastY, x, y, now);
+
+    if (Math.hypot(x - drag.lastDropletX, y - drag.lastDropletY) >= DROPLET_SPACING_PX) {
+      spawnDroplet(garden, x, y);
+      drag.lastDropletX = x;
+      drag.lastDropletY = y;
+    }
 
     drag.lastX = x;
     drag.lastY = y;
