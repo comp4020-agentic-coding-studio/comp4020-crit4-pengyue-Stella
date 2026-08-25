@@ -873,9 +873,9 @@ interface WaterSound {
 const WATER_BASE_HZ = 300;
 const WATER_MAX_HZ = 5000;
 const WATER_HZ_PER_SPEED = 6000; // speed in px/ms
-const WATER_BASE_GAIN = 0.03;
-const WATER_MAX_GAIN = 0.18;
-const WATER_GAIN_PER_SPEED = 0.4;
+const WATER_BASE_GAIN = 0.015;
+const WATER_MAX_GAIN = 0.09;
+const WATER_GAIN_PER_SPEED = 0.2;
 const WATER_PARAM_SMOOTHING_S = 0.05;
 
 /** Starts the drag's own continuous sound: filtered noise, silent until the
@@ -1006,6 +1006,19 @@ function removePlantNear(x: number, y: number): void {
   plant.dot.addEventListener("animationend", () => plant.dot.remove());
 }
 
+/** Removes every plant at once: fades each drone through the normal release
+ * curve and plays the normal shrink-out animation, but skips the shovel's
+ * per-plant thud --- a reset, not many one-shot removals. */
+function clearGarden(): void {
+  for (const plant of plants) {
+    stopDrone(plant);
+    plant.dot.classList.add("removing");
+    plant.dot.addEventListener("animationend", () => plant.dot.remove());
+  }
+  plants.length = 0;
+  sustainedQueue.length = 0;
+}
+
 // --- Tool tray: which gesture does what -----------------------------------
 //
 // One active tool at a time, picked from the tray in index.html. A species
@@ -1018,9 +1031,14 @@ type Tool = Species | "water" | "shovel";
 let activeTool: Tool = "flower";
 
 for (const button of document.querySelectorAll<HTMLButtonElement>(".tool-button")) {
+  if (button.dataset.tool === "clear") {
+    button.addEventListener("click", () => clearGarden());
+    continue;
+  }
   button.addEventListener("click", () => {
     activeTool = button.dataset.tool as Tool;
     for (const other of document.querySelectorAll<HTMLButtonElement>(".tool-button")) {
+      if (other.dataset.tool === "clear") continue;
       other.setAttribute("aria-pressed", String(other === button));
     }
   });
